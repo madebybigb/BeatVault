@@ -1,13 +1,99 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertBeatSchema, insertCartItemSchema, insertPurchaseSchema, insertLikeSchema } from "@shared/schema";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
+
+  // Create uploads directory if it doesn't exist
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const audioDir = path.join(uploadsDir, 'audio');
+  const imagesDir = path.join(uploadsDir, 'images');
+  
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+
+  // Multer configuration
+  const storage_config = multer.diskStorage({
+    destination: (req, file, cb) => {
+      if (file.fieldname === 'audio') {
+        cb(null, audioDir);
+      } else if (file.fieldname === 'artwork') {
+        cb(null, imagesDir);
+      } else {
+        cb(new Error('Invalid field name'), '');
+      }
+    },
+    filename: (req, file, cb) => {
+      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+      cb(null, uniqueName);
+    }
+  });
+
+  const upload = multer({ 
+    storage: storage_config,
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      if (file.fieldname === 'audio') {
+        const allowedTypes = /\.(mp3|wav|flac|m4a)$/i;
+        if (allowedTypes.test(file.originalname)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Audio files only (mp3, wav, flac, m4a)'));
+        }
+      } else if (file.fieldname === 'artwork') {
+        const allowedTypes = /\.(jpg|jpeg|png|webp)$/i;
+        if (allowedTypes.test(file.originalname)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Image files only (jpg, jpeg, png, webp)'));
+        }
+      } else {
+        cb(new Error('Invalid field name'));
+      }
+    }
+  });
+
+  // Serve uploaded files
+  app.use('/uploads', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    next();
+  }, express.static(uploadsDir));
+
+  // File upload endpoint
+  app.post('/api/upload', isAuthenticated, upload.fields([
+    { name: 'audio', maxCount: 1 },
+    { name: 'artwork', maxCount: 1 }
+  ]), async (req: any, res) => {
+    try {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const uploadedFiles: { [key: string]: string } = {};
+
+      if (files.audio && files.audio[0]) {
+        uploadedFiles.audioUrl = `/uploads/audio/${files.audio[0].filename}`;
+      }
+
+      if (files.artwork && files.artwork[0]) {
+        uploadedFiles.artworkUrl = `/uploads/images/${files.artwork[0].filename}`;
+      }
+
+      res.json(uploadedFiles);
+    } catch (error) {
+      console.error('File upload error:', error);
+      res.status(500).json({ message: 'File upload failed' });
+    }
+  });
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
