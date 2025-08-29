@@ -1,17 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRoute } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
-import { Calendar, Music, Play, Pause, Users, Grid3X3, List, MoreHorizontal } from 'lucide-react';
+import { apiRequest } from '@/lib/queryClient';
+import { Calendar, Music, Play, Pause, Users, Grid3X3, List, MoreHorizontal, Camera, Edit, Upload } from 'lucide-react';
 import { isUnauthorizedError } from '@/lib/authUtils';
 import type { Beat, User } from '@shared/schema';
 
@@ -19,7 +21,14 @@ export default function Profile() {
   const [, params] = useRoute('/profile/:userId');
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cropImage, setCropImage] = useState<File | null>(null);
+  const [cropType, setCropType] = useState<'profile' | 'banner'>('profile');
+  const [isHoveringProfile, setIsHoveringProfile] = useState(false);
+  const profileFileRef = useRef<HTMLInputElement>(null);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
   const { currentBeat, isPlaying, play, pause } = useGlobalPlayer();
 
   const userId = params?.userId || currentUser?.id;
@@ -108,6 +117,73 @@ export default function Profile() {
 
   const isOwnProfile = userId === currentUser?.id;
 
+  // Image upload mutation
+  const imageUploadMutation = useMutation({
+    mutationFn: async ({ file, type }: { file: File; type: 'profile' | 'banner' }) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('type', type);
+      
+      const response = await fetch('/api/upload/profile-image', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      toast({
+        title: "Image updated",
+        description: "Your profile image has been updated successfully.",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload image. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleImageSelect = (type: 'profile' | 'banner') => {
+    const fileRef = type === 'profile' ? profileFileRef : bannerFileRef;
+    fileRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'profile' | 'banner') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCropImage(file);
+      setCropType(type);
+      setCropDialogOpen(true);
+    }
+    // Reset the input
+    e.target.value = '';
+  };
+
+  const handleCroppedImage = (croppedFile: File) => {
+    imageUploadMutation.mutate({ file: croppedFile, type: cropType });
+  };
+
   if (authLoading || beatsLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -125,22 +201,68 @@ export default function Profile() {
       
       {/* Hero Section */}
       <div className="relative">
-        {/* Background gradient */}
-        <div className="h-64 bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20"></div>
+        {/* Banner Image */}
+        <div className="relative h-64 overflow-hidden">
+          {profileUser?.bannerImageUrl ? (
+            <img 
+              src={profileUser.bannerImageUrl} 
+              alt="Profile banner"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="h-full bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20"></div>
+          )}
+          
+          {/* Banner Edit Button */}
+          {isOwnProfile && (
+            <div className="absolute top-4 right-4">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="bg-black/50 hover:bg-black/70 text-white border-0"
+                onClick={() => handleImageSelect('banner')}
+                data-testid="button-edit-banner"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Banner
+              </Button>
+            </div>
+          )}
+          
+          {/* Banner overlay */}
+          <div className="absolute inset-0 bg-black/20"></div>
+        </div>
         
         {/* Profile Content */}
         <div className="container mx-auto px-4">
           <div className="relative -mt-32 pb-8">
             <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
-              <Avatar className="h-32 w-32 border-4 border-background shadow-xl">
-                <AvatarImage 
-                  src={profileUser?.profileImageUrl} 
-                  alt={getUserDisplayName(profileUser)} 
-                />
-                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                  {getUserInitials(profileUser)}
-                </AvatarFallback>
-              </Avatar>
+              {/* Profile Picture with Hover Upload */}
+              <div 
+                className="relative"
+                onMouseEnter={() => isOwnProfile && setIsHoveringProfile(true)}
+                onMouseLeave={() => setIsHoveringProfile(false)}
+              >
+                <Avatar className="h-32 w-32 border-4 border-background shadow-xl cursor-pointer">
+                  <AvatarImage 
+                    src={profileUser?.profileImageUrl} 
+                    alt={getUserDisplayName(profileUser)} 
+                  />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                    {getUserInitials(profileUser)}
+                  </AvatarFallback>
+                </Avatar>
+                
+                {/* Profile Picture Hover Overlay */}
+                {isOwnProfile && isHoveringProfile && (
+                  <div 
+                    className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center cursor-pointer transition-opacity"
+                    onClick={() => handleImageSelect('profile')}
+                  >
+                    <Camera className="h-8 w-8 text-white" />
+                  </div>
+                )}
+              </div>
               
               <div className="flex-1 space-y-4">
                 <div>
@@ -150,6 +272,11 @@ export default function Profile() {
                   <p className="text-muted-foreground">
                     @{profileUser?.email?.split('@')[0] || 'user'}
                   </p>
+                  {profileUser?.bio && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {profileUser.bio}
+                    </p>
+                  )}
                   <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
@@ -381,6 +508,35 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Hidden File Inputs */}
+      <input
+        ref={profileFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFileChange(e, 'profile')}
+      />
+      <input
+        ref={bannerFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFileChange(e, 'banner')}
+      />
+      
+      {/* Image Crop Dialog */}
+      <ImageCropDialog
+        isOpen={cropDialogOpen}
+        onClose={() => {
+          setCropDialogOpen(false);
+          setCropImage(null);
+        }}
+        onCrop={handleCroppedImage}
+        image={cropImage}
+        aspectRatio={cropType === 'profile' ? 1 : 16/9}
+        title={cropType === 'profile' ? 'Crop Profile Picture' : 'Crop Banner Image'}
+      />
 
       <Footer />
     </div>

@@ -116,6 +116,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Profile image upload endpoint
+  app.post('/api/upload/profile-image', isAuthenticated, upload.single('image'), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const file = req.file;
+      const type = req.body.type; // 'profile' or 'banner'
+      
+      if (!file) {
+        return res.status(400).json({ message: 'No image file provided' });
+      }
+      
+      if (!['profile', 'banner'].includes(type)) {
+        return res.status(400).json({ message: 'Invalid image type' });
+      }
+      
+      const imageUrl = `/uploads/images/${file.filename}`;
+      
+      // Update user profile with new image URL
+      const updateData = type === 'profile' 
+        ? { profileImageUrl: imageUrl }
+        : { bannerImageUrl: imageUrl };
+        
+      await storage.updateUser(userId, updateData);
+      
+      res.json({ 
+        success: true, 
+        imageUrl,
+        type 
+      });
+    } catch (error) {
+      console.error('Profile image upload error:', error);
+      res.status(500).json({ message: 'Profile image upload failed' });
+    }
+  });
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
