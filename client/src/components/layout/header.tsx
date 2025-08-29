@@ -182,7 +182,7 @@ export function Header() {
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/producer-dashboard" className="cursor-pointer" data-testid="link-profile">
+                    <Link href={`/profile/${user?.id}`} className="cursor-pointer" data-testid="link-profile">
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </Link>
