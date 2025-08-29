@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
+import { StickyPlayer } from "@/components/layout/sticky-player";
+import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 
 // Import pages
 import Landing from "@/pages/landing";
@@ -16,6 +18,7 @@ import NotFound from "@/pages/not-found";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { currentBeat, isPlaying, isVisible, togglePlay, pause, close } = useGlobalPlayer();
 
   return (
     <Switch>
@@ -39,13 +42,31 @@ function Router() {
   );
 }
 
+function AppWithPlayer() {
+  const { currentBeat, isPlaying, isVisible, togglePlay, pause, close } = useGlobalPlayer();
+  
+  return (
+    <>
+      <Router />
+      <StickyPlayer
+        isVisible={isVisible}
+        currentBeat={currentBeat}
+        isPlaying={isPlaying}
+        onPlay={togglePlay}
+        onPause={pause}
+        onClose={close}
+      />
+    </>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <div className="dark">
           <Toaster />
-          <Router />
+          <AppWithPlayer />
         </div>
       </TooltipProvider>
     </QueryClientProvider>

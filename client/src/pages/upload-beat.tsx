@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Upload as UploadIcon, Music, ImageIcon, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload as UploadIcon, Music, ImageIcon, CheckCircle, AlertCircle, Package, Tag } from 'lucide-react';
+import { FileUpload } from '@/components/ui/file-upload';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
@@ -21,6 +22,10 @@ import { z } from 'zod';
 
 const uploadFormSchema = insertBeatSchema.extend({
   tags: z.string().optional(),
+  audioUrl: z.string().optional(),
+  artworkUrl: z.string().optional(),
+  stemsUrl: z.string().optional(),
+  beatTagUrl: z.string().optional(),
 });
 
 type UploadFormData = z.infer<typeof uploadFormSchema>;
@@ -31,8 +36,9 @@ export default function UploadBeat() {
   const queryClient = useQueryClient();
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artworkFile, setArtworkFile] = useState<File | null>(null);
+  const [stemsFile, setStemsFile] = useState<File | null>(null);
+  const [beatTagFile, setBeatTagFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({ audio: 0, artwork: 0 });
 
   const form = useForm<UploadFormData>({
     resolver: zodResolver(uploadFormSchema),
@@ -41,6 +47,8 @@ export default function UploadBeat() {
       description: '',
       audioUrl: '',
       artworkUrl: '',
+      stemsUrl: '',
+      beatTagUrl: '',
       price: '29.95',
       bpm: 140,
       key: 'C major',
@@ -73,11 +81,15 @@ export default function UploadBeat() {
         // First, upload files if they exist
         let audioUrl = data.audioUrl;
         let artworkUrl = data.artworkUrl;
+        let stemsUrl = data.stemsUrl;
+        let beatTagUrl = data.beatTagUrl;
         
-        if (audioFile || artworkFile) {
+        if (audioFile || artworkFile || stemsFile || beatTagFile) {
           const formData = new FormData();
           if (audioFile) formData.append('audio', audioFile);
           if (artworkFile) formData.append('artwork', artworkFile);
+          if (stemsFile) formData.append('stems', stemsFile);
+          if (beatTagFile) formData.append('beatTag', beatTagFile);
           
           const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
@@ -92,6 +104,8 @@ export default function UploadBeat() {
           const uploadResult = await uploadResponse.json();
           if (uploadResult.audioUrl) audioUrl = uploadResult.audioUrl;
           if (uploadResult.artworkUrl) artworkUrl = uploadResult.artworkUrl;
+          if (uploadResult.stemsUrl) stemsUrl = uploadResult.stemsUrl;
+          if (uploadResult.beatTagUrl) beatTagUrl = uploadResult.beatTagUrl;
         }
         
         const { tags, ...beatData } = data;
@@ -101,6 +115,8 @@ export default function UploadBeat() {
           ...beatData,
           audioUrl,
           artworkUrl,
+          stemsUrl,
+          beatTagUrl,
           tags: tagsArray,
           price: parseFloat(data.price),
         });
@@ -112,6 +128,8 @@ export default function UploadBeat() {
     onSuccess: () => {
       setAudioFile(null);
       setArtworkFile(null);
+      setStemsFile(null);
+      setBeatTagFile(null);
       form.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/beats'] });
       queryClient.invalidateQueries({ queryKey: ['/api/user', user?.id, 'beats'] });
@@ -262,26 +280,16 @@ export default function UploadBeat() {
                               <FormLabel>Audio File *</FormLabel>
                               <FormControl>
                                 <div className="space-y-4">
-                                  <div className="flex items-center gap-4">
-                                    <Input
-                                      type="file"
-                                      accept=".mp3,.wav,.flac,.m4a"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          setAudioFile(file);
-                                          field.onChange(file.name);
-                                        }
-                                      }}
-                                      data-testid="input-audio-file"
-                                    />
-                                    {audioFile && (
-                                      <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                        <CheckCircle className="h-4 w-4 text-green-500" />
-                                        {audioFile.name}
-                                      </span>
-                                    )}
-                                  </div>
+                                  <FileUpload
+                                    accept=".mp3,.wav,.flac,.m4a"
+                                    onFileChange={(file) => {
+                                      setAudioFile(file);
+                                      field.onChange(file ? `file:${file.name}` : '');
+                                    }}
+                                    file={audioFile}
+                                    placeholder="Drag and drop your beat file here"
+                                    description="MP3, WAV, FLAC, or M4A up to 50MB"
+                                  />
                                   <div className="text-xs text-muted-foreground">
                                     <p>OR enter audio URL:</p>
                                   </div>
@@ -297,7 +305,7 @@ export default function UploadBeat() {
                                 </div>
                               </FormControl>
                               <p className="text-xs text-muted-foreground">
-                                Upload an audio file (MP3, WAV, FLAC, M4A) or provide a direct URL.
+                                Upload an audio file or provide a direct URL.
                               </p>
                               <FormMessage />
                             </FormItem>
@@ -313,26 +321,16 @@ export default function UploadBeat() {
                               <FormLabel>Artwork Image</FormLabel>
                               <FormControl>
                                 <div className="space-y-4">
-                                  <div className="flex items-center gap-4">
-                                    <Input
-                                      type="file"
-                                      accept=".jpg,.jpeg,.png,.webp"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          setArtworkFile(file);
-                                          field.onChange(file.name);
-                                        }
-                                      }}
-                                      data-testid="input-artwork-file"
-                                    />
-                                    {artworkFile && (
-                                      <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                        <CheckCircle className="h-4 w-4 text-green-500" />
-                                        {artworkFile.name}
-                                      </span>
-                                    )}
-                                  </div>
+                                  <FileUpload
+                                    accept=".jpg,.jpeg,.png,.webp"
+                                    onFileChange={(file) => {
+                                      setArtworkFile(file);
+                                      field.onChange(file ? `file:${file.name}` : '');
+                                    }}
+                                    file={artworkFile}
+                                    placeholder="Drag and drop your artwork here"
+                                    description="JPG, PNG, or WebP up to 50MB. Recommended: 1400x1400px"
+                                  />
                                   <div className="text-xs text-muted-foreground">
                                     <p>OR enter image URL:</p>
                                   </div>
@@ -348,7 +346,65 @@ export default function UploadBeat() {
                                 </div>
                               </FormControl>
                               <p className="text-xs text-muted-foreground">
-                                Upload an image file (JPG, PNG, WebP) or provide a direct URL. Recommended: 1400x1400px.
+                                Upload an image file or provide a direct URL.
+                              </p>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Beat Tag Upload */}
+                        <FormField
+                          control={form.control}
+                          name="beatTagUrl"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Beat Tag (Optional)</FormLabel>
+                              <FormControl>
+                                <div className="space-y-4">
+                                  <FileUpload
+                                    accept=".mp3,.wav,.flac,.m4a"
+                                    onFileChange={(file) => {
+                                      setBeatTagFile(file);
+                                      field.onChange(file ? `file:${file.name}` : '');
+                                    }}
+                                    file={beatTagFile}
+                                    placeholder="Drag and drop your beat tag here"
+                                    description="MP3, WAV, FLAC, or M4A - plays every 15 seconds over preview"
+                                  />
+                                </div>
+                              </FormControl>
+                              <p className="text-xs text-muted-foreground">
+                                Upload a short audio tag that will play over your beat preview to protect your work.
+                              </p>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Stems Upload */}
+                        <FormField
+                          control={form.control}
+                          name="stemsUrl"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Stems Package (Optional)</FormLabel>
+                              <FormControl>
+                                <div className="space-y-4">
+                                  <FileUpload
+                                    accept=".zip,.rar"
+                                    onFileChange={(file) => {
+                                      setStemsFile(file);
+                                      field.onChange(file ? `file:${file.name}` : '');
+                                    }}
+                                    file={stemsFile}
+                                    placeholder="Drag and drop your stems package here"
+                                    description="ZIP or RAR file up to 1GB containing individual track stems"
+                                  />
+                                </div>
+                              </FormControl>
+                              <p className="text-xs text-muted-foreground">
+                                Upload a compressed package containing individual instrument tracks (drums, melody, bass, etc.).
                               </p>
                               <FormMessage />
                             </FormItem>

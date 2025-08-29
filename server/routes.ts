@@ -17,18 +17,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const uploadsDir = path.join(process.cwd(), 'uploads');
   const audioDir = path.join(uploadsDir, 'audio');
   const imagesDir = path.join(uploadsDir, 'images');
+  const stemsDir = path.join(uploadsDir, 'stems');
   
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+  if (!fs.existsSync(stemsDir)) fs.mkdirSync(stemsDir, { recursive: true });
 
   // Multer configuration
   const storage_config = multer.diskStorage({
     destination: (req, file, cb) => {
-      if (file.fieldname === 'audio') {
+      if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
         cb(null, audioDir);
       } else if (file.fieldname === 'artwork') {
         cb(null, imagesDir);
+      } else if (file.fieldname === 'stems') {
+        cb(null, stemsDir);
       } else {
         cb(new Error('Invalid field name'), '');
       }
@@ -42,15 +46,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const upload = multer({ 
     storage: storage_config,
     limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB limit
+      fileSize: 1024 * 1024 * 1024, // 1GB limit for stems, will handle per-field later
     },
     fileFilter: (req, file, cb) => {
-      if (file.fieldname === 'audio') {
+      if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
         const allowedTypes = /\.(mp3|wav|flac|m4a)$/i;
         if (allowedTypes.test(file.originalname)) {
           cb(null, true);
         } else {
           cb(new Error('Audio files only (mp3, wav, flac, m4a)'));
+        }
+      } else if (file.fieldname === 'stems') {
+        const allowedTypes = /\.(zip|rar)$/i;
+        if (allowedTypes.test(file.originalname)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Stems files must be in ZIP or RAR format'));
         }
       } else if (file.fieldname === 'artwork') {
         const allowedTypes = /\.(jpg|jpeg|png|webp)$/i;
@@ -74,7 +85,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // File upload endpoint
   app.post('/api/upload', isAuthenticated, upload.fields([
     { name: 'audio', maxCount: 1 },
-    { name: 'artwork', maxCount: 1 }
+    { name: 'artwork', maxCount: 1 },
+    { name: 'stems', maxCount: 1 },
+    { name: 'beatTag', maxCount: 1 }
   ]), async (req: any, res) => {
     try {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -86,6 +99,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (files.artwork && files.artwork[0]) {
         uploadedFiles.artworkUrl = `/uploads/images/${files.artwork[0].filename}`;
+      }
+
+      if (files.stems && files.stems[0]) {
+        uploadedFiles.stemsUrl = `/uploads/stems/${files.stems[0].filename}`;
+      }
+
+      if (files.beatTag && files.beatTag[0]) {
+        uploadedFiles.beatTagUrl = `/uploads/audio/${files.beatTag[0].filename}`;
       }
 
       res.json(uploadedFiles);

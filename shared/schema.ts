@@ -46,6 +46,8 @@ export const beats = pgTable("beats", {
   producerId: varchar("producer_id").notNull(),
   audioUrl: varchar("audio_url").notNull(),
   artworkUrl: varchar("artwork_url"),
+  stemsUrl: varchar("stems_url"),
+  beatTagUrl: varchar("beat_tag_url"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   bpm: integer("bpm").notNull(),
   key: varchar("key", { length: 10 }).notNull(),
