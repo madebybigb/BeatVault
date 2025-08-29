@@ -41,13 +41,13 @@ import {
 import type { Beat } from "@shared/schema";
 
 const categories = [
-  { icon: Star, label: "New & Notable", active: false },
-  { icon: Heart, label: "For You", active: false },
-  { icon: BarChart3, label: "Top Charts", active: true },
-  { icon: Tag, label: "Exclusive Only", active: false },
-  { icon: DollarSign, label: "Under $20", active: false },
-  { icon: Music, label: "Free Beats", active: false },
-  { icon: Headphones, label: "Beats", active: false },
+  { icon: Star, label: "New & Notable", active: false, filter: "new" },
+  { icon: Heart, label: "For You", active: false, filter: "foryou" },
+  { icon: BarChart3, label: "Top Charts", active: true, filter: "trending" },
+  { icon: Tag, label: "Exclusive Only", active: false, filter: "exclusive" },
+  { icon: DollarSign, label: "Under $20", active: false, filter: "under20" },
+  { icon: Music, label: "Free Beats", active: false, filter: "free" },
+  { icon: Headphones, label: "Beats", active: false, filter: "all" },
 ];
 
 const popularTags = [
@@ -76,6 +76,7 @@ export default function Browse() {
     instruments: "All",
     price: "All"
   });
+  const [activeCategory, setActiveCategory] = useState("trending");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [savedFilters, setSavedFilters] = useState(false);
   
@@ -96,7 +97,7 @@ export default function Browse() {
   }, [user, authLoading, toast]);
 
   const { data: beats = [], isLoading } = useQuery<Beat[]>({
-    queryKey: ["/api/beats", searchQuery, selectedFilters],
+    queryKey: ["/api/beats", { search: searchQuery, category: activeCategory, ...selectedFilters }],
     retry: false,
   });
 
@@ -148,10 +149,11 @@ export default function Browse() {
                 variant={category.active ? "default" : "ghost"}
                 size="sm"
                 className={`flex flex-col items-center gap-2 h-auto py-3 px-4 rounded-2xl min-w-[100px] ${
-                  category.active 
-                    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                  activeCategory === category.filter 
+                    ? "bg-[#006aff] hover:bg-[#0056cc] text-white" 
                     : "bg-gray-800 hover:bg-gray-700 text-gray-300"
                 }`}
+                onClick={() => setActiveCategory(category.filter)}
                 data-testid={`category-${category.label.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
@@ -183,6 +185,7 @@ export default function Browse() {
                   variant="secondary"
                   className="bg-gray-800 hover:bg-gray-700 text-gray-300 cursor-pointer"
                   data-testid={`tag-${tag}`}
+                  onClick={() => setSearchQuery(tag)}
                 >
                   {tag}
                 </Badge>
@@ -394,7 +397,7 @@ export default function Browse() {
                   {/* Price & Actions */}
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <div className={`font-bold ${beat.isFree ? 'text-orange-500' : 'text-blue-500'}`}>
+                      <div className={`font-bold ${beat.isFree ? 'text-orange-500' : 'text-[#006aff]'}`}>
                         {formatPrice(beat.price, beat.isFree)}
                       </div>
                     </div>
