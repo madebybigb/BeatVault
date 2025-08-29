@@ -20,6 +20,8 @@ import {
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { Header } from "@/components/layout/header";
+import { Footer } from "@/components/layout/footer";
 import { 
   Search, 
   Play, 
@@ -123,14 +125,18 @@ export default function Browse() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-background">
+      <Header />
       {/* Header */}
       <div className="border-b border-gray-800 bg-[#0f0f0f] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -425,6 +431,8 @@ export default function Browse() {
           </div>
         )}
       </div>
+      
+      <Footer />
     </div>
   );
 }
