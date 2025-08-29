@@ -20,6 +20,9 @@ import {
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { 
@@ -38,7 +41,8 @@ import {
   Filter,
   Grid3X3,
   List,
-  ChevronRight
+  ChevronRight,
+  ShoppingCart
 } from "lucide-react";
 import type { Beat } from "@shared/schema";
 

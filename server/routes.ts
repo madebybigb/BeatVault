@@ -63,7 +63,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           cb(new Error('Stems files must be in ZIP or RAR format'));
         }
-      } else if (file.fieldname === 'artwork') {
+      } else if (file.fieldname === 'artwork' || file.fieldname === 'image') {
         const allowedTypes = /\.(jpg|jpeg|png|webp)$/i;
         if (allowedTypes.test(file.originalname)) {
           cb(null, true);

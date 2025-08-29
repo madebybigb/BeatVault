@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
 import { apiRequest } from '@/lib/queryClient';
-import { Calendar, Music, Play, Pause, Users, Grid3X3, List, MoreHorizontal, Camera, Edit, Upload } from 'lucide-react';
+import { Calendar, Music, Play, Pause, Users, Grid3X3, List, MoreHorizontal, Camera, Edit, Upload, ShoppingCart } from 'lucide-react';
 import { isUnauthorizedError } from '@/lib/authUtils';
 import type { Beat, User } from '@shared/schema';
 
@@ -182,6 +182,44 @@ export default function Profile() {
 
   const handleCroppedImage = (croppedFile: File) => {
     imageUploadMutation.mutate({ file: croppedFile, type: cropType });
+  };
+
+  // Add to cart mutation
+  const addToCartMutation = useMutation({
+    mutationFn: async (beatId: string) => {
+      return apiRequest('POST', '/api/cart', {
+        beatId,
+        licenseType: 'basic'
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Added to cart",
+        description: "Beat has been added to your cart.",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to add beat to cart. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddToCart = (beatId: string) => {
+    addToCartMutation.mutate(beatId);
   };
 
   if (authLoading || beatsLoading) {
@@ -455,9 +493,24 @@ export default function Profile() {
                               <Badge variant="outline" className="text-xs">
                                 {beat.isFree ? 'FREE' : `$${beat.price}`}
                               </Badge>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                {!beat.isFree && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="default"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => handleAddToCart(beat.id)}
+                                    disabled={addToCartMutation.isPending}
+                                    data-testid={`button-buy-${beat.id}`}
+                                  >
+                                    <ShoppingCart className="h-3 w-3 mr-1" />
+                                    ${beat.price}
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -482,6 +535,18 @@ export default function Profile() {
                             <Badge variant="outline">
                               {beat.isFree ? 'FREE' : `$${beat.price}`}
                             </Badge>
+                            {!beat.isFree && (
+                              <Button 
+                                size="sm" 
+                                variant="default"
+                                onClick={() => handleAddToCart(beat.id)}
+                                disabled={addToCartMutation.isPending}
+                                data-testid={`button-buy-${beat.id}`}
+                              >
+                                <ShoppingCart className="h-4 w-4 mr-1" />
+                                ${beat.price}
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
