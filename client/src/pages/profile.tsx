@@ -318,7 +318,7 @@ export default function Profile() {
                   <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      Joined {new Date(profileUser?.createdAt ?? Date.now()).toLocaleDateString('en-US', { 
+                      Joined {new Date(profileUser?.createdAt || Date.now()).toLocaleDateString('en-US', { 
                         month: 'long', 
                         year: 'numeric' 
                       })}

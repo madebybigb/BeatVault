@@ -87,6 +87,45 @@ export default function Browse() {
   const [savedFilters, setSavedFilters] = useState(false);
   
   const { play, pause, currentBeat, isPlaying } = useGlobalPlayer();
+  const queryClient = useQueryClient();
+
+  // Add to cart mutation
+  const addToCartMutation = useMutation({
+    mutationFn: async (beatId: string) => {
+      return apiRequest('POST', '/api/cart', {
+        beatId,
+        licenseType: 'basic'
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Added to cart",
+        description: "Beat has been added to your cart.",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to add beat to cart. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddToCart = (beatId: string) => {
+    addToCartMutation.mutate(beatId);
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {

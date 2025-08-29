@@ -29,7 +29,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     destination: (req, file, cb) => {
       if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
         cb(null, audioDir);
-      } else if (file.fieldname === 'artwork') {
+      } else if (file.fieldname === 'artwork' || file.fieldname === 'image') {
         cb(null, imagesDir);
       } else if (file.fieldname === 'stems') {
         cb(null, stemsDir);
