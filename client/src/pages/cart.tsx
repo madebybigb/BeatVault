@@ -376,8 +376,17 @@ export default function Cart() {
                                   }
                                   disabled={updateLicenseMutation.isPending}
                                 >
-                                  <SelectTrigger className="w-48" data-testid={`select-license-${item.beatId}`}>
-                                    <SelectValue />
+                                  <SelectTrigger className="w-52 h-auto min-h-[40px]" data-testid={`select-license-${item.beatId}`}>
+                                    <SelectValue className="text-left">
+                                      <div className="flex flex-col items-start">
+                                        <span className="font-medium">
+                                          {LICENSE_TYPES[item.licenseType as keyof typeof LICENSE_TYPES]?.name}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                                          {LICENSE_TYPES[item.licenseType as keyof typeof LICENSE_TYPES]?.description}
+                                        </span>
+                                      </div>
+                                    </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent className="w-64">
                                     {Object.entries(LICENSE_TYPES).map(([key, license]) => (
