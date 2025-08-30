@@ -192,12 +192,14 @@ function CollectionCard({ collection, size = 'medium' }: CollectionCardProps) {
   return (
     <Card 
       className="group overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl border-0 cursor-pointer"
-      style={{ backgroundColor: collection.color }}
+      style={{ 
+        background: `linear-gradient(135deg, ${collection.color} 0%, ${collection.color}dd 100%)`
+      }}
       onClick={handleExplore}
       data-testid={`card-collection-${collection.id}`}
     >
       <CardContent className={cn(
-        "p-6 relative h-full flex flex-col justify-between text-white",
+        "p-4 relative h-full flex flex-col justify-between text-white overflow-hidden",
         sizeClasses[size]
       )}>
         {/* Background Pattern */}
@@ -225,10 +227,14 @@ function CollectionCard({ collection, size = 'medium' }: CollectionCardProps) {
             </Badge>
           </div>
           
-          <h3 className="font-bold mb-1 truncate" data-testid={`text-collection-name-${collection.id}`}>
+          <h3 className="font-bold mb-1 break-words overflow-hidden" data-testid={`text-collection-name-${collection.id}`}>
             {collection.name}
           </h3>
-          <p className="text-white/80 text-sm mb-3 line-clamp-2" data-testid={`text-collection-description-${collection.id}`}>
+          <p className="text-white/80 text-sm mb-3 break-words overflow-hidden" style={{ 
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+          }} data-testid={`text-collection-description-${collection.id}`}>
             {collection.description}
           </p>
         </div>
