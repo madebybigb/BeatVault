@@ -3,6 +3,7 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { b2Service } from "./b2Service";
 import { insertBeatSchema, insertCartItemSchema, insertPurchaseSchema, insertLikeSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
@@ -80,40 +81,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
-  // Create uploads directory if it doesn't exist
-  const uploadsDir = path.join(process.cwd(), 'uploads');
-  const audioDir = path.join(uploadsDir, 'audio');
-  const imagesDir = path.join(uploadsDir, 'images');
-  const stemsDir = path.join(uploadsDir, 'stems');
-  
-  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
-  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
-  if (!fs.existsSync(stemsDir)) fs.mkdirSync(stemsDir, { recursive: true });
+  // Note: We now use BackBlaze B2 for file storage instead of local uploads
 
-  // Multer configuration
-  const storage_config = multer.diskStorage({
-    destination: (req, file, cb) => {
-      if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
-        cb(null, audioDir);
-      } else if (file.fieldname === 'artwork' || file.fieldname === 'image') {
-        cb(null, imagesDir);
-      } else if (file.fieldname === 'stems') {
-        cb(null, stemsDir);
-      } else {
-        cb(new Error('Invalid field name'), '');
-      }
-    },
-    filename: (req, file, cb) => {
-      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-      cb(null, uniqueName);
-    }
-  });
+  // Multer configuration for memory storage (files will be uploaded to B2)
+  const storage_config = multer.memoryStorage();
 
   const upload = multer({ 
     storage: storage_config,
     limits: {
-      fileSize: 1024 * 1024 * 1024, // 1GB limit for stems, will handle per-field later
+      fileSize: 100 * 1024 * 1024, // 100MB limit for individual files
     },
     fileFilter: (req, file, cb) => {
       if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
@@ -143,13 +119,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve uploaded files
-  app.use('/uploads', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    next();
-  }, express.static(uploadsDir));
+  // Note: Static file serving removed - files are now served from BackBlaze B2
 
-  // File upload endpoint
+  // File upload endpoint using BackBlaze B2
   app.post('/api/upload', isAuthenticated, upload.fields([
     { name: 'audio', maxCount: 1 },
     { name: 'artwork', maxCount: 1 },
@@ -160,20 +132,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
       const uploadedFiles: { [key: string]: string } = {};
 
+      // Upload audio file to B2
       if (files.audio && files.audio[0]) {
-        uploadedFiles.audioUrl = `/uploads/audio/${files.audio[0].filename}`;
+        const audioFile = files.audio[0];
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(audioFile.originalname)}`;
+        const audioUrl = await b2Service.uploadFile(fileName, audioFile.buffer, audioFile.mimetype, 'audio');
+        uploadedFiles.audioUrl = audioUrl;
       }
 
+      // Upload artwork to B2
       if (files.artwork && files.artwork[0]) {
-        uploadedFiles.artworkUrl = `/uploads/images/${files.artwork[0].filename}`;
+        const artworkFile = files.artwork[0];
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(artworkFile.originalname)}`;
+        const artworkUrl = await b2Service.uploadFile(fileName, artworkFile.buffer, artworkFile.mimetype, 'images');
+        uploadedFiles.artworkUrl = artworkUrl;
       }
 
+      // Upload stems to B2
       if (files.stems && files.stems[0]) {
-        uploadedFiles.stemsUrl = `/uploads/stems/${files.stems[0].filename}`;
+        const stemsFile = files.stems[0];
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(stemsFile.originalname)}`;
+        const stemsUrl = await b2Service.uploadFile(fileName, stemsFile.buffer, stemsFile.mimetype, 'stems');
+        uploadedFiles.stemsUrl = stemsUrl;
       }
 
+      // Upload beat tag to B2
       if (files.beatTag && files.beatTag[0]) {
-        uploadedFiles.beatTagUrl = `/uploads/audio/${files.beatTag[0].filename}`;
+        const beatTagFile = files.beatTag[0];
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(beatTagFile.originalname)}`;
+        const beatTagUrl = await b2Service.uploadFile(fileName, beatTagFile.buffer, beatTagFile.mimetype, 'audio');
+        uploadedFiles.beatTagUrl = beatTagUrl;
       }
 
       res.json(uploadedFiles);
@@ -183,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Profile image upload endpoint
+  // Profile image upload endpoint using BackBlaze B2
   app.post('/api/upload/profile-image', isAuthenticated, upload.single('image'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -198,7 +186,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid image type' });
       }
       
-      const imageUrl = `/uploads/images/${file.filename}`;
+      // Upload to B2
+      const fileName = `${type}-${userId}-${Date.now()}${path.extname(file.originalname)}`;
+      const imageUrl = await b2Service.uploadFile(fileName, file.buffer, file.mimetype, 'images');
       
       // Update user profile with new image URL
       const updateData = type === 'profile' 
