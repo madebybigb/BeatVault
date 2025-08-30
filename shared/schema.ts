@@ -79,6 +79,11 @@ export const beats = pgTable("beats", {
   isExclusive: boolean("is_exclusive").default(false),
   isFree: boolean("is_free").default(false),
   isActive: boolean("is_active").default(true),
+  // Advanced audio analysis fields
+  energy: decimal("energy", { precision: 3, scale: 2 }), // 0.0 to 1.0
+  danceability: decimal("danceability", { precision: 3, scale: 2 }), // 0.0 to 1.0
+  loudness: decimal("loudness", { precision: 5, scale: 2 }), // in LUFS
+  spectralCentroid: decimal("spectral_centroid", { precision: 8, scale: 2 }), // frequency analysis
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -112,7 +117,7 @@ export const cartItems = pgTable("cart_items", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   beatId: uuid("beat_id").notNull(),
-  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).default("basic"),
+  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive", "unlimited", "sync", "custom"] }).default("basic"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_cart_user_id").on(table.userId),
@@ -127,7 +132,7 @@ export const purchases = pgTable("purchases", {
   beatId: uuid("beat_id").notNull(),
   producerId: varchar("producer_id").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).notNull(),
+  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive", "unlimited", "sync", "custom"] }).notNull(),
   status: varchar("status", { enum: ["pending", "completed", "failed"] }).default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -363,6 +368,30 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   index("idx_push_endpoint").on(table.endpoint), // Unique constraint needed
 ]);
 
+// Notifications table for social interactions
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Recipient
+  actorId: varchar("actor_id").notNull(), // User who performed the action
+  type: varchar("type").notNull(), // 'like', 'comment', 'follow', 'mention', 'reply', 'challenge', 'sale'
+  entityType: varchar("entity_type").notNull(), // 'beat', 'comment', 'user', 'challenge'
+  entityId: varchar("entity_id").notNull(), // ID of the entity (beat, comment, etc.)
+  title: varchar("title").notNull(),
+  message: text("message").notNull(),
+  metadata: jsonb("metadata"), // Additional data like beat title, etc.
+  isRead: boolean("is_read").default(false),
+  isArchived: boolean("is_archived").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_notifications_user").on(table.userId),
+  index("idx_notifications_actor").on(table.actorId),
+  index("idx_notifications_type").on(table.type),
+  index("idx_notifications_entity").on(table.entityType, table.entityId),
+  index("idx_notifications_read").on(table.isRead),
+  index("idx_notifications_created").on(table.createdAt),
+  index("idx_notifications_user_created").on(table.userId, table.createdAt),
+]);
+
 // User listening history for AI recommendations
 export const listeningHistory = pgTable("listening_history", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -494,7 +523,7 @@ export const webhookEvents = pgTable("webhook_events", {
 export const licenses = pgTable("licenses", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseId: uuid("purchase_id").notNull(),
-  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).notNull(),
+  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive", "unlimited", "sync", "custom"] }).notNull(),
   terms: jsonb("terms").notNull(), // License terms and limitations
   downloadCount: integer("download_count").default(0),
   maxDownloads: integer("max_downloads").default(5),
@@ -647,6 +676,17 @@ export const audioProcessingJobsRelations = relations(audioProcessingJobs, ({ on
   beat: one(beats, {
     fields: [audioProcessingJobs.beatId],
     references: [beats.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  actor: one(users, {
+    fields: [notifications.actorId],
+    references: [users.id],
   }),
 }));
 
@@ -816,6 +856,10 @@ export type InsertSearchAnalytics = z.infer<typeof insertSearchAnalyticsSchema>;
 export type AudioProcessingJob = typeof audioProcessingJobs.$inferSelect;
 export type InsertAudioProcessingJob = z.infer<typeof insertAudioProcessingJobSchema>;
 
+// Notification types
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
+
 // Advanced search interfaces
 export interface SearchFilters {
   query?: string;
@@ -831,7 +875,13 @@ export interface SearchFilters {
   isFree?: boolean;
   isExclusive?: boolean;
   producerId?: string;
-  sortBy?: 'relevance' | 'newest' | 'popular' | 'price_low' | 'price_high' | 'bpm' | 'duration';
+  energyMin?: number;
+  energyMax?: number;
+  danceabilityMin?: number;
+  danceabilityMax?: number;
+  loudnessMin?: number;
+  loudnessMax?: number;
+  sortBy?: 'relevance' | 'newest' | 'popular' | 'price_low' | 'price_high' | 'bpm' | 'duration' | 'energy' | 'danceability' | 'loudness';
   limit?: number;
   offset?: number;
 }

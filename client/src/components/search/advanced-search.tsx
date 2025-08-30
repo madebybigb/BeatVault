@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, ChevronDown, X, Filter, Mic2, Clock, DollarSign } from 'lucide-react';
+import { Search, ChevronDown, X, Filter, Mic2, Clock, DollarSign, Music, Volume2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';
@@ -42,7 +42,10 @@ const SORT_OPTIONS = [
   { value: 'price_low', label: 'Price: Low to High' },
   { value: 'price_high', label: 'Price: High to Low' },
   { value: 'bpm', label: 'BPM' },
-  { value: 'duration', label: 'Duration' }
+  { value: 'duration', label: 'Duration' },
+  { value: 'energy', label: 'Energy Level' },
+  { value: 'danceability', label: 'Danceability' },
+  { value: 'loudness', label: 'Loudness' }
 ];
 
 // Debounce utility function
@@ -69,6 +72,9 @@ export function AdvancedSearch({ onSearch, onResultsChange, isLoading }: Advance
   const [bpmRange, setBpmRange] = useState<[number, number]>([60, 200]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
   const [durationRange, setDurationRange] = useState<[number, number]>([30, 300]);
+  const [energyRange, setEnergyRange] = useState<[number, number]>([0, 1]);
+  const [danceabilityRange, setDanceabilityRange] = useState<[number, number]>([0, 1]);
+  const [loudnessRange, setLoudnessRange] = useState<[number, number]>([-60, 0]);
 
   // Search suggestions
   const { data: suggestions = [] } = useQuery<string[]>({
@@ -139,6 +145,9 @@ export function AdvancedSearch({ onSearch, onResultsChange, isLoading }: Advance
     setBpmRange([60, 200]);
     setPriceRange([0, 100]);
     setDurationRange([30, 300]);
+    setEnergyRange([0, 1]);
+    setDanceabilityRange([0, 1]);
+    setLoudnessRange([-60, 0]);
     const clearedFilters: SearchFilters = {
       sortBy: 'relevance',
       limit: 20,
@@ -159,10 +168,16 @@ export function AdvancedSearch({ onSearch, onResultsChange, isLoading }: Advance
         duration: {
           min: durationRange[0],
           max: durationRange[1]
-        }
+        },
+        energyMin: energyRange[0],
+        energyMax: energyRange[1],
+        danceabilityMin: danceabilityRange[0],
+        danceabilityMax: danceabilityRange[1],
+        loudnessMin: loudnessRange[0],
+        loudnessMax: loudnessRange[1]
       });
     }
-  }, [bpmRange, priceRange, durationRange, showAdvanced]);
+  }, [bpmRange, priceRange, durationRange, energyRange, danceabilityRange, loudnessRange, showAdvanced]);
 
   return (
     <div className="space-y-4">
@@ -456,6 +471,69 @@ export function AdvancedSearch({ onSearch, onResultsChange, isLoading }: Advance
                   step={15}
                   className="w-full"
                 />
+              </div>
+
+              {/* Energy Range */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Mic2 className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Energy: {energyRange[0].toFixed(1)} - {energyRange[1].toFixed(1)}</Label>
+                </div>
+                <Slider
+                  data-testid="energy-slider"
+                  value={energyRange}
+                  onValueChange={(value) => setEnergyRange(value as [number, number])}
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>Low</span>
+                  <span>High</span>
+                </div>
+              </div>
+
+              {/* Danceability Range */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Music className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Danceability: {danceabilityRange[0].toFixed(1)} - {danceabilityRange[1].toFixed(1)}</Label>
+                </div>
+                <Slider
+                  data-testid="danceability-slider"
+                  value={danceabilityRange}
+                  onValueChange={(value) => setDanceabilityRange(value as [number, number])}
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>Low</span>
+                  <span>High</span>
+                </div>
+              </div>
+
+              {/* Loudness Range */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Volume2 className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Loudness: {loudnessRange[0]}dB - {loudnessRange[1]}dB</Label>
+                </div>
+                <Slider
+                  data-testid="loudness-slider"
+                  value={loudnessRange}
+                  onValueChange={(value) => setLoudnessRange(value as [number, number])}
+                  min={-60}
+                  max={0}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>Quiet</span>
+                  <span>Loud</span>
+                </div>
               </div>
 
               {/* Tags */}

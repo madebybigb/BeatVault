@@ -22,6 +22,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, gte, lte, count, sum, inArray, isNull } from "drizzle-orm";
+import { notificationService } from "./notificationService";
 
 interface ProducerProfile {
   user: User;
@@ -172,6 +173,11 @@ export class SocialService {
         .from(followers)
         .where(eq(followers.followingId, followingId));
 
+      // Create notification if user was followed (not unfollowed)
+      if (isFollowing) {
+        await notificationService.notifyFollow(followerId, followingId);
+      }
+
       return {
         isFollowing,
         followerCount: followerCount?.count || 0
@@ -267,6 +273,12 @@ export class SocialService {
             replyCount: sql`${comments.replyCount} + 1`
           })
           .where(eq(comments.id, parentCommentId));
+
+        // Create notification for comment reply
+        await notificationService.notifyCommentReply(comment.id, userId);
+      } else {
+        // Create notification for new comment
+        await notificationService.notifyComment(beatId, comment.id, userId);
       }
 
       // Get user info

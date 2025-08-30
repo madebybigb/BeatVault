@@ -93,6 +93,20 @@ export class B2Service {
   async getFileUrl(fileName: string): Promise<string> {
     return `https://f005.backblazeb2.com/file/beatari-userfiles-bucket/${fileName}`;
   }
+
+  async downloadFile(fileUrl: string): Promise<Buffer> {
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Error downloading file from B2:', error);
+      throw error;
+    }
+  }
 }
 
 export const b2Service = new B2Service();

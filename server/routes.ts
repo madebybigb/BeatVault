@@ -23,6 +23,7 @@ import { recommendationService } from "./recommendationService";
 import { bulkUploadService } from "./bulkUploadService";
 import { simpleAnalyticsService } from "./simpleAnalyticsService";
 import { socialService } from "./socialService";
+import { notificationService } from "./notificationService";
 import { pwaService } from "./pwaService";
 import { Webhook } from "standardwebhooks";
 import type { SearchFilters } from "@shared/schema";
@@ -38,6 +39,31 @@ const validateUUID = (id: string, res: any, fieldName = 'ID'): boolean => {
     return false;
   }
   return true;
+};
+
+// Safe parsing functions with validation
+const safeParseInt = (value: string | undefined, defaultValue: number, min?: number, max?: number): number => {
+  if (!value || typeof value !== 'string') return defaultValue;
+
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) return defaultValue;
+
+  if (min !== undefined && parsed < min) return min;
+  if (max !== undefined && parsed > max) return max;
+
+  return parsed;
+};
+
+const safeParseFloat = (value: string | undefined, defaultValue: number, min?: number, max?: number): number => {
+  if (!value || typeof value !== 'string') return defaultValue;
+
+  const parsed = parseFloat(value);
+  if (isNaN(parsed)) return defaultValue;
+
+  if (min !== undefined && parsed < min) return min;
+  if (max !== undefined && parsed > max) return max;
+
+  return parsed;
 };
 
 // Performance monitoring middleware
@@ -98,10 +124,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Multer configuration for memory storage (files will be uploaded to B2)
   const storage_config = multer.memoryStorage();
 
-  const upload = multer({ 
+  // Separate multer configs for different file types
+  const upload = multer({
     storage: storage_config,
     limits: {
-      fileSize: 100 * 1024 * 1024, // 100MB limit for individual files
+      fileSize: 50 * 1024 * 1024, // 50MB general limit
     },
     fileFilter: (req, file, cb) => {
       if (file.fieldname === 'audio' || file.fieldname === 'beatTag') {
@@ -119,11 +146,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           cb(new Error('Stems files must be in ZIP or RAR format'));
         }
       } else if (file.fieldname === 'artwork' || file.fieldname === 'image') {
+        const allowedTypes = /\.(jpg|jpeg|png|webp|gif)$/i;
+        if (allowedTypes.test(file.originalname)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Image files only (jpg, jpeg, png, webp, gif)'));
+        }
+      } else {
+        cb(new Error('Invalid field name'));
+      }
+    }
+  });
+
+  // Specific multer for profile images with smaller limits
+  const profileImageUpload = multer({
+    storage: storage_config,
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB for profile images
+    },
+    fileFilter: (req, file, cb) => {
+      if (file.fieldname === 'image') {
         const allowedTypes = /\.(jpg|jpeg|png|webp)$/i;
         if (allowedTypes.test(file.originalname)) {
           cb(null, true);
         } else {
-          cb(new Error('Image files only (jpg, jpeg, png, webp)'));
+          cb(new Error('Profile images only (jpg, jpeg, png, webp)'));
         }
       } else {
         cb(new Error('Invalid field name'));
@@ -184,39 +231,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Profile image upload endpoint using BackBlaze B2
-  app.post('/api/upload/profile-image', isAuthenticated, upload.single('image'), async (req: any, res) => {
+  app.post('/api/upload/profile-image', isAuthenticated, profileImageUpload.single('image'), async (req: any, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const file = req.file;
       const type = req.body.type; // 'profile' or 'banner'
-      
+
       if (!file) {
-        return res.status(400).json({ message: 'No image file provided' });
+        return res.status(400).json({
+          message: 'No image file provided',
+          code: 'NO_FILE'
+        });
       }
-      
+
       if (!['profile', 'banner'].includes(type)) {
-        return res.status(400).json({ message: 'Invalid image type' });
+        return res.status(400).json({
+          message: 'Invalid image type. Must be "profile" or "banner"',
+          code: 'INVALID_TYPE'
+        });
       }
-      
-      // Upload to B2
-      const fileName = `${type}-${userId}-${Date.now()}${path.extname(file.originalname)}`;
-      const imageUrl = await b2Service.uploadFile(fileName, file.buffer, file.mimetype, 'images');
-      
+
+      // Validate file size (additional check beyond multer)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        return res.status(400).json({
+          message: 'Image file too large. Maximum size is 5MB',
+          code: 'FILE_TOO_LARGE'
+        });
+      }
+
+      // Validate image dimensions (basic check)
+      try {
+        const imageBuffer = file.buffer;
+        // For now, we'll rely on the file extension validation
+        // In production, you might want to use a library like sharp to validate dimensions
+      } catch (imageError) {
+        return res.status(400).json({
+          message: 'Invalid image file',
+          code: 'INVALID_IMAGE'
+        });
+      }
+
+      // Upload to B2 with error handling
+      let imageUrl: string;
+      try {
+        const fileName = `${type}-${userId}-${Date.now()}${path.extname(file.originalname)}`;
+        imageUrl = await b2Service.uploadFile(fileName, file.buffer, file.mimetype, 'images');
+      } catch (uploadError) {
+        console.error('B2 upload error:', uploadError);
+        return res.status(500).json({
+          message: 'Failed to upload image to storage',
+          code: 'UPLOAD_FAILED'
+        });
+      }
+
       // Update user profile with new image URL
-      const updateData = type === 'profile' 
-        ? { profileImageUrl: imageUrl }
-        : { bannerImageUrl: imageUrl };
-        
-      await storage.updateUser(userId, updateData);
-      
-      res.json({ 
-        success: true, 
+      try {
+        const updateData = type === 'profile'
+          ? { profileImageUrl: imageUrl }
+          : { bannerImageUrl: imageUrl };
+
+        await storage.updateUser(userId, updateData);
+      } catch (dbError) {
+        console.error('Database update error:', dbError);
+        // Try to clean up the uploaded file if DB update fails
+        try {
+          await b2Service.deleteFile(`${type}-${userId}-${Date.now()}${path.extname(file.originalname)}`);
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+
+        return res.status(500).json({
+          message: 'Failed to update profile',
+          code: 'DB_UPDATE_FAILED'
+        });
+      }
+
+      res.json({
+        success: true,
         imageUrl,
-        type 
+        type,
+        message: `${type === 'profile' ? 'Profile' : 'Banner'} image updated successfully`
       });
     } catch (error) {
       console.error('Profile image upload error:', error);
-      res.status(500).json({ message: 'Profile image upload failed' });
+
+      // Handle multer errors
+      if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            message: 'Image file too large. Maximum size is 5MB',
+            code: 'FILE_TOO_LARGE'
+          });
+        }
+        if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+          return res.status(400).json({
+            message: 'Unexpected file field',
+            code: 'INVALID_FIELD'
+          });
+        }
+      }
+
+      res.status(500).json({
+        message: 'Profile image upload failed',
+        code: 'UPLOAD_FAILED'
+      });
     }
   });
 
@@ -249,12 +368,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filters = {
         genre: genre as string,
         mood: mood as string,
-        priceMin: priceMin ? parseFloat(priceMin as string) : undefined,
-        priceMax: priceMax ? parseFloat(priceMax as string) : undefined,
+        priceMin: priceMin ? safeParseFloat(priceMin as string, 0, 0) : undefined,
+        priceMax: priceMax ? safeParseFloat(priceMax as string, 9999, 0) : undefined,
         search: search as string,
         isFree: isFree === 'true',
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
+        limit: safeParseInt(limit as string, 20, 1, 100),
+        offset: safeParseInt(offset as string, 0, 0, 10000),
       };
 
       const beats = await storage.getBeats(filters);
@@ -268,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/beats/trending', async (req, res) => {
     try {
       const { limit = 10 } = req.query;
-      const beats = await storage.getTrendingBeats(parseInt(limit as string));
+      const beats = await storage.getTrendingBeats(safeParseInt(limit as string, 10, 1, 50));
       res.json(beats);
     } catch (error) {
       console.error("Error fetching trending beats:", error);
@@ -279,7 +398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/beats/popular', async (req, res) => {
     try {
       const { limit = 10 } = req.query;
-      const beats = await storage.getPopularBeats(parseInt(limit as string));
+      const beats = await storage.getPopularBeats(safeParseInt(limit as string, 10, 1, 50));
       res.json(beats);
     } catch (error) {
       console.error("Error fetching popular beats:", error);
@@ -520,22 +639,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         query: req.query.q as string,
         genre: req.query.genre as string,
         mood: req.query.mood as string,
-        bpmMin: req.query.bpmMin ? parseInt(req.query.bpmMin as string) : undefined,
-        bpmMax: req.query.bpmMax ? parseInt(req.query.bpmMax as string) : undefined,
+        bpmMin: req.query.bpmMin ? safeParseInt(req.query.bpmMin as string, 60, 60, 200) : undefined,
+        bpmMax: req.query.bpmMax ? safeParseInt(req.query.bpmMax as string, 180, 60, 200) : undefined,
         key: req.query.key as string,
-        priceMin: req.query.priceMin ? parseFloat(req.query.priceMin as string) : undefined,
-        priceMax: req.query.priceMax ? parseFloat(req.query.priceMax as string) : undefined,
+        priceMin: req.query.priceMin ? safeParseFloat(req.query.priceMin as string, 0, 0) : undefined,
+        priceMax: req.query.priceMax ? safeParseFloat(req.query.priceMax as string, 9999, 0) : undefined,
         duration: {
-          min: req.query.durationMin ? parseInt(req.query.durationMin as string) : undefined,
-          max: req.query.durationMax ? parseInt(req.query.durationMax as string) : undefined
+          min: req.query.durationMin ? safeParseInt(req.query.durationMin as string, 0, 0) : undefined,
+          max: req.query.durationMax ? safeParseInt(req.query.durationMax as string, 600, 0) : undefined
         },
         tags: req.query.tags ? (req.query.tags as string).split(',') : undefined,
         isFree: req.query.isFree ? req.query.isFree === 'true' : undefined,
         isExclusive: req.query.isExclusive ? req.query.isExclusive === 'true' : undefined,
         producerId: req.query.producerId as string,
         sortBy: req.query.sortBy as any || 'relevance',
-        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 100) : 20,
-        offset: req.query.offset ? parseInt(req.query.offset as string) : 0
+        limit: safeParseInt(req.query.limit as string, 20, 1, 100),
+        offset: safeParseInt(req.query.offset as string, 0, 0, 10000)
       };
 
       // Get user ID if authenticated
@@ -589,7 +708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/search/trending', async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const limit = safeParseInt(req.query.limit as string, 10, 1, 50);
       const trending = await searchService.getTrendingSearches(limit);
       res.json(trending);
     } catch (error) {
@@ -1486,7 +1605,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ======================
-  // PWA & OFFLINE ROUTES  
+  // NOTIFICATION ROUTES
+  // ======================
+
+  // Get user notifications
+  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const limit = safeParseInt(req.query.limit as string, 20, 1, 50);
+      const offset = safeParseInt(req.query.offset as string, 0, 0, 1000);
+      const includeRead = req.query.includeRead !== 'false';
+
+      const notifications = await notificationService.getUserNotifications(
+        userId,
+        limit,
+        offset,
+        includeRead
+      );
+
+      res.json(notifications);
+    } catch (error) {
+      console.error('Get notifications error:', error);
+      res.status(500).json({ message: 'Failed to get notifications' });
+    }
+  });
+
+  // Get unread notification count
+  app.get('/api/notifications/unread-count', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const count = await notificationService.getUnreadCount(userId);
+      res.json({ count });
+    } catch (error) {
+      console.error('Get unread count error:', error);
+      res.status(500).json({ message: 'Failed to get unread count' });
+    }
+  });
+
+  // Mark notification as read
+  app.post('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { id } = req.params;
+
+      if (!validateUUID(id, res, 'notification ID')) return;
+
+      const success = await notificationService.markAsRead(id, userId);
+
+      if (!success) {
+        return res.status(404).json({ message: 'Notification not found' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark notification as read error:', error);
+      res.status(500).json({ message: 'Failed to mark notification as read' });
+    }
+  });
+
+  // Mark all notifications as read
+  app.post('/api/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const success = await notificationService.markAllAsRead(userId);
+      res.json({ success });
+    } catch (error) {
+      console.error('Mark all notifications as read error:', error);
+      res.status(500).json({ message: 'Failed to mark all notifications as read' });
+    }
+  });
+
+  // Archive notification
+  app.post('/api/notifications/:id/archive', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { id } = req.params;
+
+      if (!validateUUID(id, res, 'notification ID')) return;
+
+      const success = await notificationService.archiveNotification(id, userId);
+
+      if (!success) {
+        return res.status(404).json({ message: 'Notification not found' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Archive notification error:', error);
+      res.status(500).json({ message: 'Failed to archive notification' });
+    }
+  });
+
+  // ======================
+  // PWA & OFFLINE ROUTES
   // ======================
 
   // PWA Manifest
@@ -1553,7 +1764,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const shareUrl = `${req.protocol}://${req.get('host')}/beat/${beatId}`;
-      const shareText = `Check out "${beat.title}" by ${beat.producer} on BeatHub!`;
+      const shareText = `Check out "${beat.title}" by producer on BeatHub!`;
 
       const shareData = {
         url: shareUrl,

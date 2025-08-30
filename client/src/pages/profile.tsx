@@ -146,7 +146,7 @@ export default function Profile() {
         description: "Your profile image has been updated successfully.",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
@@ -158,9 +158,37 @@ export default function Profile() {
         }, 500);
         return;
       }
+
+      // Handle specific error codes from server
+      const errorCode = error?.response?.data?.code;
+      let errorMessage = "Failed to upload image. Please try again.";
+
+      switch (errorCode) {
+        case 'NO_FILE':
+          errorMessage = "No image file was provided.";
+          break;
+        case 'INVALID_TYPE':
+          errorMessage = "Invalid image type. Please select a valid image.";
+          break;
+        case 'FILE_TOO_LARGE':
+          errorMessage = "Image file is too large. Please select an image smaller than 5MB.";
+          break;
+        case 'INVALID_IMAGE':
+          errorMessage = "The selected file is not a valid image.";
+          break;
+        case 'UPLOAD_FAILED':
+          errorMessage = "Failed to upload image to storage. Please try again.";
+          break;
+        case 'DB_UPDATE_FAILED':
+          errorMessage = "Image uploaded but failed to update profile. Please contact support.";
+          break;
+        default:
+          errorMessage = error?.response?.data?.message || "Failed to upload image. Please try again.";
+      }
+
       toast({
         title: "Upload failed",
-        description: "Failed to upload image. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -173,11 +201,36 @@ export default function Profile() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'profile' | 'banner') => {
     const file = e.target.files?.[0];
-    if (file) {
-      setCropImage(file);
-      setCropType(type);
-      setCropDialogOpen(true);
+    if (!file) return;
+
+    // Client-side validation
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+    if (file.size > maxSize) {
+      toast({
+        title: "File too large",
+        description: "Please select an image smaller than 5MB",
+        variant: "destructive",
+      });
+      e.target.value = '';
+      return;
     }
+
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select a JPEG, PNG, or WebP image",
+        variant: "destructive",
+      });
+      e.target.value = '';
+      return;
+    }
+
+    setCropImage(file);
+    setCropType(type);
+    setCropDialogOpen(true);
+
     // Reset the input
     e.target.value = '';
   };

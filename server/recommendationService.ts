@@ -49,13 +49,15 @@ interface SimilarUser {
 
 export class RecommendationService {
   private modelWeights = {
-    genre: 0.25,
-    mood: 0.20,
-    bpm: 0.15,
-    popularity: 0.15,
-    recency: 0.10,
-    collaborative: 0.10,
-    novelty: 0.05
+    genre: 0.20,
+    mood: 0.18,
+    bpm: 0.12,
+    popularity: 0.12,
+    recency: 0.08,
+    collaborative: 0.12,
+    novelty: 0.06,
+    seasonal: 0.06,
+    moodContext: 0.06
   };
 
   /**
@@ -211,13 +213,101 @@ export class RecommendationService {
   }
 
   /**
-   * Get genre-based recommendations
+   * Get mood-based recommendations considering time of day and context
    */
-  async getGenreRecommendations(
-    genre: string,
-    userId?: string,
+  async getMoodBasedRecommendations(
+    userId: string,
+    currentTime: Date = new Date(),
+    userContext?: {
+      location?: string;
+      weather?: string;
+      activity?: string;
+    },
     limit: number = 20
   ): Promise<Beat[]> {
+    try {
+      const cacheKey = `mood_recommendations:${userId}:${currentTime.getHours()}`;
+      const cached = await redisService.get(cacheKey);
+      if (cached) {
+        const beatIds = JSON.parse(cached);
+        return await this.getBeatsByIds(beatIds);
+      }
+
+      // Determine time-based mood preferences
+      const hour = currentTime.getHours();
+      const dayOfWeek = currentTime.getDay();
+
+      let timeMood = 'chill';
+      if (hour >= 6 && hour < 12) {
+        timeMood = 'energetic'; // Morning - upbeat
+      } else if (hour >= 12 && hour < 17) {
+        timeMood = 'focused'; // Afternoon - productive
+      } else if (hour >= 17 && hour < 22) {
+        timeMood = 'relaxed'; // Evening - chill
+      } else {
+        timeMood = 'ambient'; // Night - ambient
+      }
+
+      // Weekend vs weekday adjustment
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        timeMood = 'party'; // Weekend - more energetic
+      }
+
+      // Context-based adjustments
+      if (userContext?.weather === 'rainy') {
+        timeMood = 'melancholic';
+      } else if (userContext?.weather === 'sunny') {
+        timeMood = 'happy';
+      }
+
+      if (userContext?.activity === 'workout') {
+        timeMood = 'energetic';
+      } else if (userContext?.activity === 'study') {
+        timeMood = 'focused';
+      }
+
+      // Get user behavior profile
+      const userBehavior = await this.getUserBehaviorProfile(userId);
+
+      // Find beats matching the determined mood
+      const moodBeats = await db
+        .select()
+        .from(beats)
+        .where(and(
+          eq(beats.isActive, true),
+          sql`LOWER(${beats.mood}) LIKE LOWER(${`%${timeMood}%`})`
+        ))
+        .orderBy(desc(beats.playCount), desc(beats.likeCount))
+        .limit(limit * 2); // Get more candidates for scoring
+
+      // Score and rank beats
+      const scoredBeats = await Promise.all(
+        moodBeats.map(beat => this.scoreBeatForUser(beat, userBehavior, userId))
+      );
+
+      const recommendations = scoredBeats
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(scored => scored.beatId);
+
+      // Cache for 2 hours
+      await redisService.setex(cacheKey, 7200, JSON.stringify(recommendations));
+
+      return await this.getBeatsByIds(recommendations);
+    } catch (error) {
+      console.error('Mood-based recommendations failed:', error);
+      return await this.getFallbackRecommendations(limit);
+    }
+  }
+
+  /**
+    * Get genre-based recommendations
+    */
+   async getGenreRecommendations(
+     genre: string,
+     userId?: string,
+     limit: number = 20
+   ): Promise<Beat[]> {
     try {
       let query = db
         .select()
@@ -237,7 +327,7 @@ export class RecommendationService {
         const likedBeatIds = userLikes.map(like => like.beatId);
         
         if (likedBeatIds.length > 0) {
-          query = query.where(sql`${beats.id} NOT IN (${likedBeatIds.join(',')})`);
+          query = query.where(sql`${beats.id} NOT IN (${sql.join(likedBeatIds.map(id => sql`${id}`), sql`, `)})`);
         }
       }
 
@@ -320,10 +410,10 @@ export class RecommendationService {
     try {
       // Store in analytics table
       await db.insert(analytics).values({
-        userId,
-        entityType: 'beat',
-        entityId: beatId,
-        action,
+        producerId: userId, // Use producerId instead of userId
+        beatId,
+        metricType: action,
+        metricValue: 1,
         metadata: duration ? { duration } : undefined
       });
 
@@ -452,7 +542,7 @@ export class RecommendationService {
       .where(eq(beats.isActive, true));
 
     if (interactedBeatIds.length > 0) {
-      query = query.where(sql`${beats.id} NOT IN (${interactedBeatIds.join(',')})`);
+      query = query.where(sql`${beats.id} NOT IN (${sql.join(interactedBeatIds.map(id => sql`${id}`), sql`, `)})`);
     }
 
     return await query.limit(200); // Get larger candidate pool
@@ -508,13 +598,13 @@ export class RecommendationService {
   }
 
   private calculatePopularityBoost(beat: Beat): number {
-    const playScore = Math.min(beat.playCount / 1000, 1) * 50; // Max 50 points for plays
-    const likeScore = Math.min(beat.likeCount / 100, 1) * 50; // Max 50 points for likes
+    const playScore = Math.min((beat.playCount || 0) / 1000, 1) * 50; // Max 50 points for plays
+    const likeScore = Math.min((beat.likeCount || 0) / 100, 1) * 50; // Max 50 points for likes
     return playScore + likeScore;
   }
 
   private calculateRecencyBoost(beat: Beat): number {
-    const daysSinceCreated = (Date.now() - beat.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceCreated = (Date.now() - (beat.createdAt?.getTime() || Date.now())) / (1000 * 60 * 60 * 24);
     return Math.max(0, 100 - daysSinceCreated * 2); // Lose 2 points per day
   }
 

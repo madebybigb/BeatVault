@@ -20,12 +20,18 @@ const LICENSE_ICONS = {
   basic: Music,
   premium: Star,
   exclusive: Crown,
+  unlimited: Music,
+  sync: Star,
+  custom: Crown,
 };
 
 const LICENSE_COLORS = {
   basic: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950',
   premium: 'border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950',
   exclusive: 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950',
+  unlimited: 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950',
+  sync: 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950',
+  custom: 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950',
 };
 
 export function LicenseSelector({ 
@@ -67,13 +73,13 @@ export function LicenseSelector({
           <DialogTitle>Choose Your License</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
           {(Object.keys(LICENSE_TIERS) as LicenseType[]).map((licenseType) => {
             const license = LICENSE_TIERS[licenseType];
             const price = calculateLicensePrice(beatPrice, licenseType);
             const Icon = LICENSE_ICONS[licenseType];
             const isSelected = selectedLicense === licenseType;
-            const isPopular = licenseType === 'premium';
+            const isPopular = licenseType === 'premium' || licenseType === 'unlimited';
 
             return (
               <Card
@@ -161,7 +167,10 @@ export function LicenseSelector({
           <div className="text-sm text-muted-foreground space-y-1">
             <p>• <strong>Basic:</strong> Perfect for demos, non-commercial projects, and getting started</p>
             <p>• <strong>Premium:</strong> Ideal for commercial releases, radio play, and professional use</p>
+            <p>• <strong>Unlimited:</strong> Full commercial use with unlimited streams and downloads</p>
+            <p>• <strong>Sync:</strong> Perfect for film, TV, and advertising synchronization</p>
             <p>• <strong>Exclusive:</strong> Complete ownership, beat removed from sale, unlimited rights</p>
+            <p>• <strong>Custom:</strong> Tailored licensing terms for your specific needs</p>
           </div>
         </div>
       </DialogContent>

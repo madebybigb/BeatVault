@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { AudioVisualization } from "./audio-visualization";
 
 interface MobileAudioPlayerProps {
   beatId: string;
@@ -48,6 +49,9 @@ export function MobileAudioPlayer({
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [lastTap, setLastTap] = useState(0);
+  const [visualizationData, setVisualizationData] = useState<number[]>([]);
+  const [isBackgroundMode, setIsBackgroundMode] = useState(false);
 
   // PWA offline cache mutations
   const cacheBeatMutation = useMutation({
@@ -185,6 +189,7 @@ export function MobileAudioPlayer({
     }
   };
 
+
   // Playback controls
   const togglePlayPause = useCallback(() => {
     const audio = audioRef.current;
@@ -204,6 +209,20 @@ export function MobileAudioPlayer({
       setIsPlaying(true);
     }
   }, [isPlaying, toast]);
+
+  // Background mode toggle
+  const toggleBackgroundMode = useCallback(() => {
+    setIsBackgroundMode(!isBackgroundMode);
+    if (!isBackgroundMode) {
+      // Request background playback permission
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', togglePlayPause);
+        navigator.mediaSession.setActionHandler('pause', togglePlayPause);
+        navigator.mediaSession.setActionHandler('nexttrack', onNext || (() => {}));
+        navigator.mediaSession.setActionHandler('previoustrack', onPrevious || (() => {}));
+      }
+    }
+  }, [isBackgroundMode, togglePlayPause, onNext, onPrevious]);
 
   const handleSeek = (value: number[]) => {
     const audio = audioRef.current;
@@ -267,12 +286,29 @@ export function MobileAudioPlayer({
     cacheBeatMutation.mutate({ beatId, audioUrl, cacheSize: estimatedSize });
   };
 
+  // Double tap detection for like
+  const handleDoubleTap = useCallback(() => {
+    const currentTime = Date.now();
+    const timeDiff = currentTime - lastTap;
+
+    if (timeDiff < 300 && timeDiff > 0) {
+      onLikeToggle();
+      toast({
+        title: "Double tapped!",
+        description: isLiked ? "Removed from favorites" : "Added to favorites",
+      });
+    }
+
+    setLastTap(currentTime);
+  }, [lastTap, onLikeToggle, isLiked, toast]);
+
   return (
-    <div 
+    <div
       className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 to-black/80 backdrop-blur-lg border-t border-white/10 p-4 z-50"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onDoubleClick={handleDoubleTap}
       data-testid="mobile-audio-player"
     >
       <audio
@@ -325,6 +361,17 @@ export function MobileAudioPlayer({
           </Button>
         </div>
       </div>
+
+      {/* Audio Visualization */}
+      {isPlaying && (
+        <div className="mb-3">
+          <AudioVisualization
+            audioRef={audioRef}
+            isPlaying={isPlaying}
+            className="opacity-80"
+          />
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="mb-4">
@@ -420,7 +467,7 @@ export function MobileAudioPlayer({
           >
             <Shuffle className="h-4 w-4" />
           </Button>
-          
+
           <Button
             size="sm"
             variant="ghost"
@@ -429,6 +476,19 @@ export function MobileAudioPlayer({
             data-testid="button-repeat"
           >
             <Repeat className="h-4 w-4" />
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={toggleBackgroundMode}
+            className={`p-2 h-8 w-8 hover:bg-white/10 ${isBackgroundMode ? 'text-green-400' : 'text-white'}`}
+            data-testid="button-background-mode"
+            title="Background playback mode"
+          >
+            <div className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center">
+              <div className={`w-2 h-2 rounded-full ${isBackgroundMode ? 'bg-current' : 'bg-transparent'}`} />
+            </div>
           </Button>
         </div>
 
