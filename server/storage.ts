@@ -145,7 +145,7 @@ export class DatabaseStorage implements IStorage {
         or(
           ilike(beats.title, `%${filters.search}%`),
           ilike(beats.description, `%${filters.search}%`),
-          sql`${beats.tags} && ARRAY[${filters.search}]`
+          sql`${beats.tags} && ARRAY[${filters.search}]::text[]`
         )
       );
     }
@@ -157,7 +157,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(beats.createdAt));
 
     if (filters?.limit) {
-      query = query.limit(filters.limit);
+      query = query.limit(Math.min(filters.limit, 100)); // Cap at 100 for performance
     }
     if (filters?.offset) {
       query = query.offset(filters.offset);
@@ -167,8 +167,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBeat(id: string): Promise<Beat | undefined> {
-    const [beat] = await db.select().from(beats).where(eq(beats.id, id));
-    return beat;
+    try {
+      const [beat] = await db.select().from(beats).where(eq(beats.id, id));
+      return beat;
+    } catch (error) {
+      console.error(`Error fetching beat ${id}:`, error);
+      return undefined;
+    }
   }
 
   async getBeatsByProducer(producerId: string): Promise<Beat[]> {
@@ -209,21 +214,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTrendingBeats(limit = 10): Promise<Beat[]> {
-    return await db
-      .select()
-      .from(beats)
-      .where(eq(beats.isActive, true))
-      .orderBy(desc(beats.playCount), desc(beats.likeCount))
-      .limit(limit);
+    try {
+      return await db
+        .select()
+        .from(beats)
+        .where(eq(beats.isActive, true))
+        .orderBy(desc(beats.playCount), desc(beats.likeCount))
+        .limit(Math.min(limit, 50)); // Cap at 50 for performance
+    } catch (error) {
+      console.error('Error fetching trending beats:', error);
+      return [];
+    }
   }
 
   async getPopularBeats(limit = 10): Promise<Beat[]> {
-    return await db
-      .select()
-      .from(beats)
-      .where(eq(beats.isActive, true))
-      .orderBy(desc(beats.likeCount), desc(beats.playCount))
-      .limit(limit);
+    try {
+      return await db
+        .select()
+        .from(beats)
+        .where(eq(beats.isActive, true))
+        .orderBy(desc(beats.likeCount), desc(beats.playCount))
+        .limit(Math.min(limit, 50)); // Cap at 50 for performance
+    } catch (error) {
+      console.error('Error fetching popular beats:', error);
+      return [];
+    }
   }
 
   // Cart operations

@@ -17,6 +17,19 @@ import { apiBatcher } from "./apiBatching";
 // Cache instance - 10 minute default TTL
 const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
 
+// Utility functions for validation
+const isValidUUID = (id: string): boolean => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
+const validateUUID = (id: string, res: any, fieldName = 'ID'): boolean => {
+  if (!id || typeof id !== 'string' || !isValidUUID(id)) {
+    res.status(400).json({ message: `Invalid ${fieldName} format` });
+    return false;
+  }
+  return true;
+};
+
 // Performance monitoring middleware
 function queryTimer(label: string) {
   const start = Date.now();
@@ -275,6 +288,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/beats/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Validate UUID format
+      if (!validateUUID(id, res, 'beat ID')) return;
+      
       const beat = await storage.getBeat(id);
       if (!beat) {
         return res.status(404).json({ message: "Beat not found" });
@@ -289,6 +306,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/beats/:id/play', async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Validate UUID format
+      if (!validateUUID(id, res, 'beat ID')) return;
+      
       await storage.incrementPlayCount(id);
       res.json({ success: true });
     } catch (error) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ interface BeatCardProps {
   variant?: 'grid' | 'list';
 }
 
-export function BeatCard({ 
+export const BeatCard = memo(function BeatCard({ 
   beat, 
   isPlaying, 
   onPlay, 
@@ -36,15 +36,15 @@ export function BeatCard({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const handlePlayToggle = () => {
+  const handlePlayToggle = useCallback(() => {
     if (isPlaying) {
       onPause?.();
     } else {
       onPlay?.();
     }
-  };
+  }, [isPlaying, onPause, onPlay]);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = useCallback(() => {
     if (!isAuthenticated) {
       toast({
         title: "Authentication required",
@@ -58,9 +58,9 @@ export function BeatCard({
       beatId: beat.id,
       licenseType: "basic",
     });
-  };
+  }, [isAuthenticated, toast, addToCart, beat.id]);
 
-  const handleLikeToggle = () => {
+  const handleLikeToggle = useCallback(() => {
     if (!isAuthenticated) {
       toast({
         title: "Authentication required",
@@ -71,7 +71,7 @@ export function BeatCard({
     }
     
     setIsLiked(!isLiked);
-  };
+  }, [isAuthenticated, toast, isLiked]);
 
   const wishlistMutation = useMutation({
     mutationFn: async () => {
@@ -336,4 +336,4 @@ export function BeatCard({
       </CardContent>
     </Card>
   );
-}
+});
