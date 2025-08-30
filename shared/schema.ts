@@ -32,14 +32,21 @@ export const users = pgTable("users", {
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
+  username: varchar("username").unique(),
   profileImageUrl: varchar("profile_image_url"),
   bannerImageUrl: varchar("banner_image_url"),
   bio: text("bio"),
+  location: varchar("location"),
+  website: varchar("website"),
   role: varchar("role", { enum: ["producer", "artist", "both"] }).default("both"),
+  isVerified: boolean("is_verified").default(false),
+  socialLinks: jsonb("social_links"), // Store Instagram, Twitter, etc.
+  preferences: jsonb("preferences"), // Store user preferences for recommendations
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_users_email").on(table.email),
+  index("idx_users_username").on(table.username),
   index("idx_users_role").on(table.role),
   index("idx_users_created_at").on(table.createdAt),
 ]);
@@ -157,6 +164,81 @@ export const collections = pgTable("collections", {
   index("idx_collections_name").on(table.name),
 ]);
 
+// Followers table for social features
+export const followers = pgTable("followers", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id").notNull(),
+  followingId: varchar("following_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_followers_follower").on(table.followerId),
+  index("idx_followers_following").on(table.followingId),
+  index("idx_followers_pair").on(table.followerId, table.followingId), // Unique constraint
+]);
+
+// User listening history for AI recommendations
+export const listeningHistory = pgTable("listening_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  beatId: uuid("beat_id").notNull(),
+  listenDuration: integer("listen_duration").notNull(), // seconds
+  completionRate: decimal("completion_rate", { precision: 5, scale: 2 }), // percentage
+  sessionId: varchar("session_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_listening_user").on(table.userId),
+  index("idx_listening_beat").on(table.beatId),
+  index("idx_listening_created").on(table.createdAt),
+  index("idx_listening_user_created").on(table.userId, table.createdAt),
+]);
+
+// Analytics data for producers
+export const analytics = pgTable("analytics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  producerId: varchar("producer_id").notNull(),
+  beatId: uuid("beat_id"),
+  metricType: varchar("metric_type").notNull(), // 'play', 'like', 'purchase', 'download'
+  metricValue: integer("metric_value").default(1),
+  metadata: jsonb("metadata"), // Additional data like location, device, etc.
+  date: timestamp("date").defaultNow(),
+}, (table) => [
+  index("idx_analytics_producer").on(table.producerId),
+  index("idx_analytics_beat").on(table.beatId),
+  index("idx_analytics_type").on(table.metricType),
+  index("idx_analytics_date").on(table.date),
+  index("idx_analytics_producer_date").on(table.producerId, table.date),
+]);
+
+// Search suggestions for advanced search
+export const searchSuggestions = pgTable("search_suggestions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  query: varchar("query").notNull(),
+  category: varchar("category").notNull(), // 'beat', 'producer', 'genre', 'tag'
+  popularity: integer("popularity").default(1),
+  lastUsed: timestamp("last_used").defaultNow(),
+}, (table) => [
+  index("idx_search_query").on(table.query),
+  index("idx_search_category").on(table.category),
+  index("idx_search_popularity").on(table.popularity),
+]);
+
+// Licensing information
+export const licenses = pgTable("licenses", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseId: uuid("purchase_id").notNull(),
+  licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).notNull(),
+  terms: jsonb("terms").notNull(), // License terms and limitations
+  downloadCount: integer("download_count").default(0),
+  maxDownloads: integer("max_downloads").default(5),
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_licenses_purchase").on(table.purchaseId),
+  index("idx_licenses_type").on(table.licenseType),
+  index("idx_licenses_active").on(table.isActive),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   beats: many(beats),
@@ -227,6 +309,46 @@ export const collectionsRelations = relations(collections, ({ many }) => ({
   beats: many(beats),
 }));
 
+export const followersRelations = relations(followers, ({ one }) => ({
+  follower: one(users, {
+    fields: [followers.followerId],
+    references: [users.id],
+  }),
+  following: one(users, {
+    fields: [followers.followingId],
+    references: [users.id],
+  }),
+}));
+
+export const listeningHistoryRelations = relations(listeningHistory, ({ one }) => ({
+  user: one(users, {
+    fields: [listeningHistory.userId],
+    references: [users.id],
+  }),
+  beat: one(beats, {
+    fields: [listeningHistory.beatId],
+    references: [beats.id],
+  }),
+}));
+
+export const analyticsRelations = relations(analytics, ({ one }) => ({
+  producer: one(users, {
+    fields: [analytics.producerId],
+    references: [users.id],
+  }),
+  beat: one(beats, {
+    fields: [analytics.beatId],
+    references: [beats.id],
+  }),
+}));
+
+export const licensesRelations = relations(licenses, ({ one }) => ({
+  purchase: one(purchases, {
+    fields: [licenses.purchaseId],
+    references: [purchases.id],
+  }),
+}));
+
 // Schemas for validation
 export const insertBeatSchema = createInsertSchema(beats).omit({
   id: true,
@@ -260,6 +382,26 @@ export const insertCollectionSchema = createInsertSchema(collections).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertFollowerSchema = createInsertSchema(followers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertListeningHistorySchema = createInsertSchema(listeningHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAnalyticsSchema = createInsertSchema(analytics).omit({
+  id: true,
+  date: true,
+});
+
+export const insertLicenseSchema = createInsertSchema(licenses).omit({
+  id: true,
+  createdAt: true,
 });
 
 // Pagination types
@@ -300,3 +442,11 @@ export type Wishlist = typeof wishlist.$inferSelect;
 export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
 export type Collection = typeof collections.$inferSelect;
 export type InsertCollection = z.infer<typeof insertCollectionSchema>;
+export type Follower = typeof followers.$inferSelect;
+export type InsertFollower = z.infer<typeof insertFollowerSchema>;
+export type ListeningHistory = typeof listeningHistory.$inferSelect;
+export type InsertListeningHistory = z.infer<typeof insertListeningHistorySchema>;
+export type Analytics = typeof analytics.$inferSelect;
+export type InsertAnalytics = z.infer<typeof insertAnalyticsSchema>;
+export type License = typeof licenses.$inferSelect;
+export type InsertLicense = z.infer<typeof insertLicenseSchema>;
