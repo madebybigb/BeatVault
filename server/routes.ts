@@ -11,12 +11,10 @@ import path from "path";
 import fs from "fs";
 import rateLimit from "express-rate-limit";
 import slowDown from "express-slow-down";
-import NodeCache from "node-cache";
 import { jobs } from "./backgroundJobs";
 import { apiBatcher } from "./apiBatching";
-
-// Cache instance - 10 minute default TTL
-const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
+import { redisService } from "./redis";
+import { initializeWebSocket, getWebSocketService } from "./websocket";
 
 // Utility functions for validation
 const isValidUUID = (id: string): boolean => {
@@ -75,6 +73,9 @@ const searchSlowDown = slowDown({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Initialize Redis connection
+  await redisService.connect();
+  
   // Apply general rate limiting to all routes
   app.use(generalLimiter);
   
@@ -374,9 +375,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const cartItem = await storage.addToCart(cartItemData);
       
-      // Invalidate cart cache and send background notification
-      cache.del(`cart:${userId}`);
+      // Invalidate cart cache and send real-time notification
+      await redisService.del(`cart:${userId}`);
       jobs.sendNotification('cart_add', userId, { beatId: cartItemData.beatId });
+      
+      // Send real-time notification via WebSocket
+      const wsService = getWebSocketService();
+      if (wsService) {
+        wsService.sendNotificationToUser(userId, {
+          type: 'cart_add',
+          message: 'Beat added to cart',
+          beatId: cartItemData.beatId
+        });
+      }
       
       res.status(201).json(cartItem);
     } catch (error) {
@@ -576,5 +587,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  
+  // Initialize WebSocket server
+  initializeWebSocket(httpServer);
+  
   return httpServer;
 }
