@@ -9,6 +9,7 @@ export class ApiBatcher {
       params: any;
     }>;
     timeout: NodeJS.Timeout;
+    createdAt: number;
   }> = new Map();
 
   // Batch play count updates
@@ -19,7 +20,8 @@ export class ApiBatcher {
     if (!this.batches.has(batchKey)) {
       this.batches.set(batchKey, {
         requests: [],
-        timeout: setTimeout(() => this.processBatch(batchKey), 2000) // Batch for 2 seconds
+        timeout: setTimeout(() => this.processBatch(batchKey), 2000), // Batch for 2 seconds
+        createdAt: Date.now()
       });
     }
 
@@ -83,24 +85,29 @@ export class ApiBatcher {
 
   // Batch like/unlike operations
   batchLikes = async (requests: Array<{ userId: string; beatId: string; action: 'like' | 'unlike' }>) => {
-    console.log(`[BATCH] Processing ${requests.length} like operations`);
-    
-    // Group by action type
-    const likes = requests.filter(r => r.action === 'like');
-    const unlikes = requests.filter(r => r.action === 'unlike');
-    
-    // Process in batches
-    if (likes.length > 0) {
-      console.log(`[BATCH] Adding ${likes.length} likes`);
-      // Batch insert likes
+    try {
+      console.log(`[BATCH] Processing ${requests.length} like operations`);
+
+      // Group by action type
+      const likes = requests.filter(r => r.action === 'like');
+      const unlikes = requests.filter(r => r.action === 'unlike');
+
+      // Process in batches
+      if (likes.length > 0) {
+        console.log(`[BATCH] Adding ${likes.length} likes`);
+        // Batch insert likes
+      }
+
+      if (unlikes.length > 0) {
+        console.log(`[BATCH] Removing ${unlikes.length} likes`);
+        // Batch delete unlikes
+      }
+
+      return { processed: requests.length };
+    } catch (error) {
+      console.error('[BATCH] Error in batchLikes:', error);
+      throw error;
     }
-    
-    if (unlikes.length > 0) {
-      console.log(`[BATCH] Removing ${unlikes.length} likes`);
-      // Batch delete unlikes
-    }
-    
-    return { processed: requests.length };
   };
 
   // Batch cart operations
@@ -110,32 +117,42 @@ export class ApiBatcher {
     beatId: string;
     licenseType?: string;
   }>) => {
-    console.log(`[BATCH] Processing ${operations.length} cart operations`);
-    
-    const adds = operations.filter(op => op.operation === 'add');
-    const removes = operations.filter(op => op.operation === 'remove');
-    
-    // Batch process cart operations
-    const results = [];
-    
-    for (const add of adds) {
-      results.push({ operation: 'add', beatId: add.beatId, success: true });
+    try {
+      console.log(`[BATCH] Processing ${operations.length} cart operations`);
+
+      const adds = operations.filter(op => op.operation === 'add');
+      const removes = operations.filter(op => op.operation === 'remove');
+
+      // Batch process cart operations
+      const results = [];
+
+      for (const add of adds) {
+        results.push({ operation: 'add', beatId: add.beatId, success: true });
+      }
+
+      for (const remove of removes) {
+        results.push({ operation: 'remove', beatId: remove.beatId, success: true });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('[BATCH] Error in batchCartOperations:', error);
+      throw error;
     }
-    
-    for (const remove of removes) {
-      results.push({ operation: 'remove', beatId: remove.beatId, success: true });
-    }
-    
-    return results;
   };
 
   // Clean up expired batches
   cleanup = () => {
     const now = Date.now();
-    for (const [key, batch] of this.batches.entries()) {
-      // Clean up batches older than 30 seconds
-      clearTimeout(batch.timeout);
-      this.batches.delete(key);
+    const expiryTime = 30 * 1000; // 30 seconds
+
+    for (const [key, batch] of Array.from(this.batches.entries())) {
+      // Check if batch has expired (created more than 30 seconds ago)
+      if (now - batch.createdAt > expiryTime) {
+        clearTimeout(batch.timeout);
+        this.batches.delete(key);
+        console.log(`[BATCH] Cleaned up expired batch: ${key}`);
+      }
     }
   };
 }

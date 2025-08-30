@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const licenseTypeSchema = z.enum(['basic', 'premium', 'exclusive']);
+export const licenseTypeSchema = z.enum(['basic', 'premium', 'exclusive', 'unlimited', 'sync', 'custom']);
 export type LicenseType = z.infer<typeof licenseTypeSchema>;
 
 export interface LicenseDetails {
@@ -93,6 +93,81 @@ export const LICENSE_TIERS: Record<LicenseType, LicenseDetails> = {
       musicVideos: true,
       streaming: true,
     }
+  },
+  unlimited: {
+    type: 'unlimited',
+    name: 'Unlimited Commercial',
+    description: 'Full commercial use with unlimited streams and downloads',
+    price: 199.99,
+    features: [
+      'WAV + MP3 files',
+      'Unlimited commercial use',
+      'Unlimited streams and downloads',
+      'Radio broadcast rights',
+      'Stem files included',
+      'Advanced mixing rights',
+      'Music video rights',
+      'No distribution limits'
+    ],
+    limitations: {
+      commercialUse: true,
+      distributionLimit: undefined,
+      creditRequired: true,
+      exclusivity: false,
+      stemFiles: true,
+      radioBroadcast: true,
+      musicVideos: true,
+      streaming: true,
+    }
+  },
+  sync: {
+    type: 'sync',
+    name: 'Sync License',
+    description: 'Perfect for film, TV, and advertising synchronization',
+    price: 299.99,
+    features: [
+      'WAV + MP3 files',
+      'Sync licensing for media',
+      'Commercial use allowed',
+      'Film/TV/advertising rights',
+      'Stem files included',
+      'Advanced mixing rights',
+      'No distribution limits',
+      'Producer credit required'
+    ],
+    limitations: {
+      commercialUse: true,
+      distributionLimit: undefined,
+      creditRequired: true,
+      exclusivity: false,
+      stemFiles: true,
+      radioBroadcast: true,
+      musicVideos: true,
+      streaming: true,
+    }
+  },
+  custom: {
+    type: 'custom',
+    name: 'Custom License',
+    description: 'Tailored licensing terms for your specific needs',
+    price: 0, // Price to be determined
+    features: [
+      'Custom terms and conditions',
+      'Flexible usage rights',
+      'Negotiable pricing',
+      'Contact producer directly',
+      'Personalized agreement'
+    ],
+    limitations: {
+      commercialUse: true, // To be determined
+      distributionLimit: undefined,
+      creditRequired: true, // To be determined
+      exclusivity: false, // To be determined
+      stemFiles: false, // To be determined
+      radioBroadcast: false, // To be determined
+      musicVideos: false, // To be determined
+      streaming: false, // To be determined
+    }
   }
 };
 
@@ -126,9 +201,16 @@ export function calculateLicensePrice(basePrice: number, licenseType: LicenseTyp
   const multipliers = {
     basic: 1,
     premium: 3.5,
-    exclusive: 16.5
+    exclusive: 16.5,
+    unlimited: 6.5,
+    sync: 9.5,
+    custom: 0 // Custom pricing
   };
-  
+
+  if (licenseType === 'custom') {
+    return LICENSE_TIERS[licenseType].price; // Custom pricing to be determined
+  }
+
   return Math.max(basePrice * multipliers[licenseType], LICENSE_TIERS[licenseType].price);
 }
 

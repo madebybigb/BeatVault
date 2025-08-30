@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { NotificationDropdown } from '@/components/ui/notification-dropdown';
 import { Music, Search, ShoppingCart, User, LogOut, Upload, BarChart3, Menu, Heart } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
@@ -145,16 +146,16 @@ export function Header() {
               </Button>
               
               <Link href="/cart">
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
+                <Button
+                  size="sm"
+                  variant="ghost"
                   className="relative"
                   data-testid="button-cart"
                 >
                   <ShoppingCart className="h-4 w-4" />
                   {cartItemCount > 0 && (
-                    <Badge 
-                      variant="destructive" 
+                    <Badge
+                      variant="destructive"
                       className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
                       data-testid="badge-cart-count"
                     >
@@ -163,6 +164,8 @@ export function Header() {
                   )}
                 </Button>
               </Link>
+
+              <NotificationDropdown />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
