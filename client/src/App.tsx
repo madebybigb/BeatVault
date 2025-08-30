@@ -27,20 +27,35 @@ function Router() {
 
   return (
     <Switch>
-      {isLoading || !isAuthenticated ? (
+      {/* Public routes - accessible without authentication */}
+      <Route path="/browse" component={Browse} />
+      <Route path="/search" component={Search} />
+      <Route path="/collections" component={Collections} />
+      <Route path="/profile/:userId" component={Profile} />
+      
+      {/* Authentication-dependent routes */}
+      {isLoading ? (
         <Route path="/" component={Landing} />
+      ) : !isAuthenticated ? (
+        <>
+          <Route path="/" component={Landing} />
+          {/* Redirect authenticated-only pages to landing */}
+          <Route path="/upload-beat" component={Landing} />
+          <Route path="/cart" component={Landing} />
+          <Route path="/checkout" component={Landing} />
+          <Route path="/producer-dashboard" component={Landing} />
+          <Route path="/wishlist" component={Landing} />
+          <Route path="/upload" component={Landing} />
+          <Route path="/dashboard" component={Landing} />
+        </>
       ) : (
         <>
           <Route path="/" component={Home} />
-          <Route path="/browse" component={Browse} />
-          <Route path="/search" component={Search} />
           <Route path="/upload-beat" component={UploadBeat} />
           <Route path="/cart" component={Cart} />
           <Route path="/checkout" component={Checkout} />
           <Route path="/producer-dashboard" component={ProducerDashboard} />
-          <Route path="/profile/:userId?" component={Profile} />
           <Route path="/wishlist" component={Wishlist} />
-          <Route path="/collections" component={Collections} />
           {/* Legacy route support */}
           <Route path="/upload" component={UploadBeat} />
           <Route path="/dashboard" component={ProducerDashboard} />

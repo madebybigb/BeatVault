@@ -51,66 +51,70 @@ export function Header() {
             </span>
           </Link>
           
-          {isAuthenticated && (
-            <nav className="hidden md:flex items-center space-x-6">
-              <Link 
-                href="/browse" 
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  location === "/browse" ? "text-primary" : "text-foreground"
-                )}
-                data-testid="link-browse"
-              >
-                Browse
-              </Link>
-              <Link 
-                href="/collections" 
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  location === "/collections" ? "text-primary" : "text-muted-foreground"
-                )}
-                data-testid="link-collections"
-              >
-                Collections
-              </Link>
-              <Link 
-                href="/upload-beat" 
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  location === "/upload-beat" ? "text-primary" : "text-muted-foreground"
-                )}
-                data-testid="link-upload"
-              >
-                Upload
-              </Link>
-              <Link 
-                href="/producer-dashboard" 
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  location === "/producer-dashboard" ? "text-primary" : "text-muted-foreground"
-                )}
-                data-testid="link-dashboard"
-              >
-                Dashboard
-              </Link>
-            </nav>
-          )}
+          <nav className="hidden md:flex items-center space-x-6">
+            {/* Public navigation - always visible */}
+            <Link 
+              href="/browse" 
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-primary",
+                location === "/browse" ? "text-primary" : "text-foreground"
+              )}
+              data-testid="link-browse"
+            >
+              Browse
+            </Link>
+            <Link 
+              href="/collections" 
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-primary",
+                location === "/collections" ? "text-primary" : "text-muted-foreground"
+              )}
+              data-testid="link-collections"
+            >
+              Collections
+            </Link>
+            
+            {/* Authenticated-only navigation */}
+            {isAuthenticated && (
+              <>
+                <Link 
+                  href="/upload-beat" 
+                  className={cn(
+                    "text-sm font-medium transition-colors hover:text-primary",
+                    location === "/upload-beat" ? "text-primary" : "text-muted-foreground"
+                  )}
+                  data-testid="link-upload"
+                >
+                  Upload
+                </Link>
+                <Link 
+                  href="/producer-dashboard" 
+                  className={cn(
+                    "text-sm font-medium transition-colors hover:text-primary",
+                    location === "/producer-dashboard" ? "text-primary" : "text-muted-foreground"
+                  )}
+                  data-testid="link-dashboard"
+                >
+                  Dashboard
+                </Link>
+              </>
+            )}
+          </nav>
         </div>
         
         <div className="flex items-center space-x-4">
-          {isAuthenticated && (
-            <form onSubmit={handleSearch} className="relative hidden lg:block">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search beats, producers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 w-80 bg-secondary border-border focus:ring-primary focus:border-primary"
-                data-testid="input-search"
-              />
-            </form>
-          )}
+          {/* Search bar - available for everyone */}
+          <form onSubmit={handleSearch} className="relative hidden lg:block">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search beats, producers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 w-80 bg-secondary border-border focus:ring-primary focus:border-primary"
+              data-testid="input-search"
+            />
+          </form>
           
           {!isAuthenticated ? (
             <div className="flex items-center space-x-3">
@@ -231,7 +235,7 @@ export function Header() {
       </div>
 
       {/* Mobile Menu */}
-      {isMobileMenuOpen && isAuthenticated && (
+      {isMobileMenuOpen && (
         <div className="md:hidden border-t border-border bg-background/95 backdrop-blur">
           <div className="container mx-auto px-4 py-4 space-y-4">
             <form onSubmit={handleSearch} className="relative">

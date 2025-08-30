@@ -19,6 +19,9 @@ import { dodoPaymentsService } from "./dodoPayments";
 import { searchService } from "./searchService";
 import { audioService } from "./audioService";
 import { cdnService } from "./cdnService";
+import { recommendationService } from "./recommendationService";
+import { bulkUploadService } from "./bulkUploadService";
+import { simpleAnalyticsService } from "./simpleAnalyticsService";
 import { Webhook } from "standardwebhooks";
 import type { SearchFilters } from "@shared/schema";
 
@@ -834,6 +837,262 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to invalidate cache' });
     }
   });
+
+  // Recommendation System routes
+  app.get('/api/recommendations/personalized', async (req, res) => {
+    try {
+      const userId = req.user?.sub; // Optional - can work without authentication
+      const limit = parseInt(req.query.limit as string) || 20;
+      const exclude = req.query.exclude ? (req.query.exclude as string).split(',') : [];
+      
+      if (userId) {
+        // Authenticated user - get personalized recommendations
+        const recommendations = await recommendationService.getPersonalizedRecommendations(
+          userId,
+          limit,
+          exclude
+        );
+        res.json(recommendations);
+      } else {
+        // Unauthenticated user - get trending beats
+        const trending = await recommendationService.getTrendingBeats(limit);
+        res.json(trending);
+      }
+    } catch (error) {
+      console.error('Personalized recommendations error:', error);
+      res.status(500).json({ message: 'Failed to get recommendations' });
+    }
+  });
+
+  app.get('/api/recommendations/trending', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const trending = await recommendationService.getTrendingBeats(limit);
+      res.json(trending);
+    } catch (error) {
+      console.error('Trending recommendations error:', error);
+      res.status(500).json({ message: 'Failed to get trending beats' });
+    }
+  });
+
+  app.get('/api/recommendations/similar/:beatId', async (req, res) => {
+    try {
+      const { beatId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      const similar = await recommendationService.findSimilarBeats(beatId, limit);
+      res.json(similar);
+    } catch (error) {
+      console.error('Similar beats error:', error);
+      res.status(500).json({ message: 'Failed to find similar beats' });
+    }
+  });
+
+  app.get('/api/recommendations/genre/:genre', async (req, res) => {
+    try {
+      const { genre } = req.params;
+      const userId = req.user?.sub;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      const recommendations = await recommendationService.getGenreRecommendations(
+        genre,
+        userId,
+        limit
+      );
+      res.json(recommendations);
+    } catch (error) {
+      console.error('Genre recommendations error:', error);
+      res.status(500).json({ message: 'Failed to get genre recommendations' });
+    }
+  });
+
+  app.post('/api/recommendations/track-interaction', async (req, res) => {
+    try {
+      const userId = req.user?.sub || 'anonymous';
+      const { beatId, action, duration } = req.body;
+      
+      if (!beatId || !action) {
+        return res.status(400).json({ message: 'Beat ID and action required' });
+      }
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      await recommendationService.trackUserInteraction(
+        userId,
+        beatId,
+        action,
+        duration
+      );
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Track interaction error:', error);
+      res.status(500).json({ message: 'Failed to track interaction' });
+    }
+  });
+
+  // Bulk Upload routes
+  const bulkUpload = bulkUploadService.getMulterConfig();
+  
+  app.post('/api/bulk-upload/start', isAuthenticated, bulkUpload.array('audioFiles', 50), async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: 'No audio files provided' });
+      }
+      
+      // Parse default metadata from request body
+      const defaultMetadata = {
+        genre: req.body.genre || 'Hip Hop',
+        mood: req.body.mood || 'Energetic',
+        bpm: req.body.bpm ? parseInt(req.body.bpm) : undefined,
+        key: req.body.key || undefined,
+        price: req.body.price ? parseFloat(req.body.price) : 29.99,
+        tags: req.body.tags ? req.body.tags.split(',').map((tag: string) => tag.trim()) : [],
+        description: req.body.description || '',
+        isFree: req.body.isFree === 'true',
+        isExclusive: req.body.isExclusive === 'true'
+      };
+      
+      const jobId = await bulkUploadService.startBulkUpload(userId, files, defaultMetadata);
+      
+      res.json({
+        success: true,
+        jobId,
+        totalFiles: files.length,
+        message: `Started processing ${files.length} files`
+      });
+    } catch (error) {
+      console.error('Bulk upload start error:', error);
+      res.status(500).json({ message: 'Failed to start bulk upload' });
+    }
+  });
+
+  app.get('/api/bulk-upload/status/:jobId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const userId = req.user.sub;
+      
+      const job = await bulkUploadService.getBulkUploadStatus(jobId);
+      
+      if (!job) {
+        return res.status(404).json({ message: 'Upload job not found' });
+      }
+      
+      if (job.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      res.json(job);
+    } catch (error) {
+      console.error('Bulk upload status error:', error);
+      res.status(500).json({ message: 'Failed to get upload status' });
+    }
+  });
+
+  app.get('/api/bulk-upload/history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      const history = await bulkUploadService.getUserUploadHistory(userId, limit);
+      res.json(history);
+    } catch (error) {
+      console.error('Upload history error:', error);
+      res.status(500).json({ message: 'Failed to get upload history' });
+    }
+  });
+
+  app.delete('/api/bulk-upload/:jobId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const userId = req.user.sub;
+      
+      const cancelled = await bulkUploadService.cancelBulkUpload(jobId, userId);
+      
+      if (!cancelled) {
+        return res.status(404).json({ message: 'Upload job not found or cannot be cancelled' });
+      }
+      
+      res.json({ success: true, message: 'Upload job cancelled' });
+    } catch (error) {
+      console.error('Cancel upload error:', error);
+      res.status(500).json({ message: 'Failed to cancel upload' });
+    }
+  });
+
+  // Analytics routes
+  app.get('/api/analytics/revenue', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const metrics = await simpleAnalyticsService.getRevenueMetrics(userId);
+      res.json(metrics);
+    } catch (error) {
+      console.error('Revenue analytics error:', error);
+      res.status(500).json({ message: 'Failed to get revenue analytics' });
+    }
+  });
+
+  app.get('/api/analytics/engagement', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const metrics = await simpleAnalyticsService.getEngagementMetrics(userId);
+      res.json(metrics);
+    } catch (error) {
+      console.error('Engagement analytics error:', error);
+      res.status(500).json({ message: 'Failed to get engagement analytics' });
+    }
+  });
+
+  app.get('/api/analytics/top-beats', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const topBeats = await simpleAnalyticsService.getTopBeats(userId, limit);
+      res.json(topBeats);
+    } catch (error) {
+      console.error('Top beats analytics error:', error);
+      res.status(500).json({ message: 'Failed to get top beats' });
+    }
+  });
+
+  app.get('/api/analytics/dashboard', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.sub;
+      const dashboard = await simpleAnalyticsService.getDashboard(userId);
+      res.json(dashboard);
+    } catch (error) {
+      console.error('Dashboard analytics error:', error);
+      res.status(500).json({ message: 'Failed to get dashboard analytics' });
+    }
+  });
+
+  // Simplified - removed complex time series for now
+
+  app.post('/api/analytics/track', async (req, res) => {
+    try {
+      const userId = req.user?.sub || 'anonymous';
+      const { beatId, metricType, metricValue, metadata } = req.body;
+      
+      if (!metricType) {
+        return res.status(400).json({ message: 'Metric type required' });
+      }
+      
+      await simpleAnalyticsService.trackEvent(userId, beatId, metricType, metricValue, metadata);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Track analytics error:', error);
+      res.status(500).json({ message: 'Failed to track analytics event' });
+    }
+  });
+
+  // Advanced features like versioning and collaboration would require additional database tables
+  // These are planned for future implementation
 
   // Like routes
   app.post('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
