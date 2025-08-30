@@ -793,14 +793,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get beat URLs
       const beats = await storage.getBeats({ 
-        filters: { isActive: true }, 
+        isActive: true, 
         limit: beatIds.length,
         offset: 0 
       });
       
-      const audioUrls = beats.beats
-        .filter(beat => beatIds.includes(beat.id))
-        .map(beat => beat.audioUrl);
+      const audioUrls = beats
+        .filter((beat: any) => beatIds.includes(beat.id))
+        .map((beat: any) => beat.audioUrl);
       
       // Preload to edge cache
       await cdnService.preloadToEdgeCache(audioUrls);

@@ -798,8 +798,7 @@ export type Wishlist = typeof wishlist.$inferSelect;
 export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
 export type Collection = typeof collections.$inferSelect;
 export type InsertCollection = z.infer<typeof insertCollectionSchema>;
-export type Follower = typeof followers.$inferSelect;
-export type InsertFollower = z.infer<typeof insertFollowerSchema>;
+// Removed duplicate - already defined above
 export type ListeningHistory = typeof listeningHistory.$inferSelect;
 export type InsertListeningHistory = z.infer<typeof insertListeningHistorySchema>;
 export type Analytics = typeof analytics.$inferSelect;

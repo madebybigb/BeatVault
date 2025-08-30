@@ -285,7 +285,7 @@ export default function Profile() {
               >
                 <Avatar className="h-32 w-32 border-4 border-background shadow-xl cursor-pointer">
                   <AvatarImage 
-                    src={profileUser?.profileImageUrl} 
+                    src={profileUser?.profileImageUrl || undefined} 
                     alt={getUserDisplayName(profileUser)} 
                   />
                   <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
