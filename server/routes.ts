@@ -186,7 +186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Profile image upload endpoint using BackBlaze B2
   app.post('/api/upload/profile-image', isAuthenticated, upload.single('image'), async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const file = req.file;
       const type = req.body.type; // 'profile' or 'banner'
       
@@ -223,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
@@ -322,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/beats', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const beatData = insertBeatSchema.parse({
         ...req.body,
         producerId: userId,
@@ -373,7 +373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cart routes
   app.get('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const cartItems = await storage.getCartItems(userId);
       res.json(cartItems);
     } catch (error) {
@@ -384,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const cartItemData = insertCartItemSchema.parse({
         ...req.body,
         userId,
@@ -418,7 +418,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/cart/:beatId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { beatId } = req.params;
       
       const success = await storage.removeFromCart(userId, beatId);
@@ -435,7 +435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       await storage.clearCart(userId);
       res.json({ success: true });
     } catch (error) {
@@ -447,7 +447,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Wishlist routes
   app.get('/api/wishlist', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const wishlistItems = await storage.getWishlistItems(userId);
       res.json(wishlistItems);
     } catch (error) {
@@ -458,7 +458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/wishlist', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { beatId } = req.body;
       
       const wishlistItem = await storage.addToWishlist({ userId, beatId });
@@ -471,7 +471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/wishlist/:beatId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { beatId } = req.params;
       
       const success = await storage.removeFromWishlist(userId, beatId);
@@ -542,8 +542,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let userId: string | undefined;
       try {
         const authHeader = req.headers.authorization;
-        if (authHeader && req.user?.sub) {
-          userId = req.user.sub;
+        if (authHeader && (req.user as any)?.claims?.sub) {
+          userId = (req.user as any).claims.sub;
         }
       } catch (error) {
         // Non-authenticated search is allowed
@@ -663,7 +663,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user owns the beat
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       if (beat.producerId !== userId) {
         return res.status(403).json({ message: 'Access denied' });
       }
@@ -706,7 +706,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/audio/:beatId/streaming-analytics', isAuthenticated, async (req: any, res) => {
     try {
       const { beatId } = req.params;
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { duration, quality, bufferingEvents, completionRate } = req.body;
       
       if (!validateUUID(beatId, res, 'beat ID')) return;
@@ -819,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/cdn/invalidate', isAuthenticated, async (req: any, res) => {
     try {
       const { assetPaths } = req.body;
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       
       if (!Array.isArray(assetPaths) || assetPaths.length === 0) {
         return res.status(400).json({ message: 'Asset paths required' });
@@ -843,7 +843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Recommendation System routes
   app.get('/api/recommendations/personalized', async (req, res) => {
     try {
-      const userId = req.user?.sub; // Optional - can work without authentication
+      const userId = (req.user as any)?.claims?.sub; // Optional - can work without authentication
       const limit = parseInt(req.query.limit as string) || 20;
       const exclude = req.query.exclude ? (req.query.exclude as string).split(',') : [];
       
@@ -940,7 +940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/bulk-upload/start', isAuthenticated, bulkUpload.array('audioFiles', 50), async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const files = req.files as Express.Multer.File[];
       
       if (!files || files.length === 0) {
@@ -977,7 +977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/bulk-upload/status/:jobId', isAuthenticated, async (req: any, res) => {
     try {
       const { jobId } = req.params;
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       
       const job = await bulkUploadService.getBulkUploadStatus(jobId);
       
@@ -998,7 +998,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/bulk-upload/history', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const limit = parseInt(req.query.limit as string) || 20;
       
       const history = await bulkUploadService.getUserUploadHistory(userId, limit);
@@ -1012,7 +1012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/bulk-upload/:jobId', isAuthenticated, async (req: any, res) => {
     try {
       const { jobId } = req.params;
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       
       const cancelled = await bulkUploadService.cancelBulkUpload(jobId, userId);
       
@@ -1030,7 +1030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics routes
   app.get('/api/analytics/revenue', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const metrics = await simpleAnalyticsService.getRevenueMetrics(userId);
       res.json(metrics);
     } catch (error) {
@@ -1041,7 +1041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/analytics/engagement', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const metrics = await simpleAnalyticsService.getEngagementMetrics(userId);
       res.json(metrics);
     } catch (error) {
@@ -1052,7 +1052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/analytics/top-beats', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const limit = parseInt(req.query.limit as string) || 10;
       
       const topBeats = await simpleAnalyticsService.getTopBeats(userId, limit);
@@ -1065,7 +1065,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/analytics/dashboard', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const dashboard = await simpleAnalyticsService.getDashboard(userId);
       res.json(dashboard);
     } catch (error) {
@@ -1099,7 +1099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Like routes
   app.post('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { id: beatId } = req.params;
 
       const like = await storage.likeBeats({ userId, beatId });
@@ -1112,7 +1112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const { id: beatId } = req.params;
 
       const success = await storage.unlikeBeat(userId, beatId);
@@ -1129,7 +1129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/user/likes', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const likes = await storage.getUserLikes(userId);
       res.json(likes);
     } catch (error) {
@@ -1141,7 +1141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Purchase routes
   app.post('/api/purchases', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const purchaseData = insertPurchaseSchema.parse({
         ...req.body,
         userId,
@@ -1168,7 +1168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/purchases', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const purchases = await storage.getPurchasesByUser(userId);
       res.json(purchases);
     } catch (error) {
@@ -1191,7 +1191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Payment routes
   app.post('/api/checkout/create', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
       const userEmail = req.user.claims.email || `user_${userId}@example.com`;
       const userName = req.user.claims.name || `User ${userId}`;
 
@@ -1232,7 +1232,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/payment/session/:sessionId', isAuthenticated, async (req: any, res) => {
     try {
       const { sessionId } = req.params;
-      const userId = req.user.sub;
+      const userId = (req.user as any).claims.sub;
 
       if (!validateUUID(sessionId, res, 'Session ID')) return;
 

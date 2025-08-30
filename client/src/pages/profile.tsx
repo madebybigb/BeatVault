@@ -33,10 +33,14 @@ export default function Profile() {
 
   const userId = params?.userId || currentUser?.id;
 
+  // Allow anonymous users to view profiles, only require auth for profile editing
+  const isOwnProfile = userId === currentUser?.id;
+  
   useEffect(() => {
-    if (!authLoading && !currentUser) {
+    // Only redirect if trying to access own profile without auth
+    if (!authLoading && !currentUser && isOwnProfile) {
       toast({
-        title: "Unauthorized",
+        title: "Unauthorized", 
         description: "You are logged out. Logging in again...",
         variant: "destructive",
       });
@@ -45,7 +49,7 @@ export default function Profile() {
       }, 500);
       return;
     }
-  }, [currentUser, authLoading, toast]);
+  }, [currentUser, authLoading, toast, isOwnProfile]);
 
   const { data: profileUser } = useQuery<User>({
     queryKey: ['/api/users', userId],
@@ -114,8 +118,6 @@ export default function Profile() {
     }
     return user.email?.split('@')[0] || 'User';
   };
-
-  const isOwnProfile = userId === currentUser?.id;
 
   // Image upload mutation
   const imageUploadMutation = useMutation({
