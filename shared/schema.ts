@@ -26,7 +26,7 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User storage table.
+// User storage table with indexes
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
@@ -38,9 +38,13 @@ export const users = pgTable("users", {
   role: varchar("role", { enum: ["producer", "artist", "both"] }).default("both"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_users_email").on(table.email),
+  index("idx_users_role").on(table.role),
+  index("idx_users_created_at").on(table.createdAt),
+]);
 
-// Beats table
+// Beats table with performance indexes
 export const beats = pgTable("beats", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title", { length: 255 }).notNull(),
@@ -64,18 +68,37 @@ export const beats = pgTable("beats", {
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Performance indexes for frequently queried fields
+  index("idx_beats_producer_id").on(table.producerId),
+  index("idx_beats_genre").on(table.genre),
+  index("idx_beats_mood").on(table.mood),
+  index("idx_beats_price").on(table.price),
+  index("idx_beats_is_free").on(table.isFree),
+  index("idx_beats_is_active").on(table.isActive),
+  index("idx_beats_created_at").on(table.createdAt),
+  index("idx_beats_play_count").on(table.playCount),
+  index("idx_beats_like_count").on(table.likeCount),
+  // Composite indexes for common query patterns
+  index("idx_beats_active_genre").on(table.isActive, table.genre),
+  index("idx_beats_active_created").on(table.isActive, table.createdAt),
+  index("idx_beats_producer_active").on(table.producerId, table.isActive),
+]);
 
-// Cart items table
+// Cart items table with indexes
 export const cartItems = pgTable("cart_items", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   beatId: uuid("beat_id").notNull(),
   licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).default("basic"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_cart_user_id").on(table.userId),
+  index("idx_cart_beat_id").on(table.beatId),
+  index("idx_cart_user_beat").on(table.userId, table.beatId), // Unique constraint index
+]);
 
-// Purchases table
+// Purchases table with indexes
 export const purchases = pgTable("purchases", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
@@ -85,15 +108,25 @@ export const purchases = pgTable("purchases", {
   licenseType: varchar("license_type", { enum: ["basic", "premium", "exclusive"] }).notNull(),
   status: varchar("status", { enum: ["pending", "completed", "failed"] }).default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_purchases_user_id").on(table.userId),
+  index("idx_purchases_producer_id").on(table.producerId),
+  index("idx_purchases_beat_id").on(table.beatId),
+  index("idx_purchases_status").on(table.status),
+  index("idx_purchases_created_at").on(table.createdAt),
+]);
 
-// Likes table
+// Likes table with indexes
 export const likes = pgTable("likes", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   beatId: uuid("beat_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_likes_user_id").on(table.userId),
+  index("idx_likes_beat_id").on(table.beatId),
+  index("idx_likes_user_beat").on(table.userId, table.beatId), // Unique constraint index
+]);
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -173,6 +206,29 @@ export const insertLikeSchema = createInsertSchema(likes).omit({
   id: true,
   createdAt: true,
 });
+
+// Pagination types
+export interface PaginationResult<T> {
+  data: T[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+// Background job types
+export interface BackgroundJob {
+  id: string;
+  type: 'beat_processing' | 'email_notification' | 'analytics_update';
+  data: any;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  createdAt: Date;
+  processedAt?: Date;
+  error?: string;
+}
 
 // Types
 export type UpsertUser = typeof users.$inferInsert;

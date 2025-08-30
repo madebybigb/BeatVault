@@ -8,8 +8,62 @@ import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import rateLimit from "express-rate-limit";
+import slowDown from "express-slow-down";
+import NodeCache from "node-cache";
+import { jobs } from "./backgroundJobs";
+import { apiBatcher } from "./apiBatching";
+
+// Cache instance - 10 minute default TTL
+const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
+
+// Performance monitoring middleware
+function queryTimer(label: string) {
+  const start = Date.now();
+  return () => {
+    const duration = Date.now() - start;
+    console.log(`[PERF] ${label}: ${duration}ms`);
+    if (duration > 1000) {
+      console.warn(`[SLOW QUERY] ${label} took ${duration}ms`);
+    }
+  };
+}
+
+// Rate limiting middleware
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  message: "Too many requests, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 auth requests per windowMs
+  message: "Too many authentication attempts, please try again later.",
+  skipSuccessfulRequests: true,
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 uploads per minute
+  message: "Too many uploads, please try again later.",
+});
+
+// Slow down middleware for expensive operations
+const searchSlowDown = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  delayAfter: 50, // allow 50 requests per 15 minutes at full speed
+  delayMs: () => 100, // slow down subsequent requests by 100ms per request
+  maxDelayMs: 2000, // maximum delay of 2 seconds
+  validate: { delayMs: false }, // Disable warning
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Apply general rate limiting to all routes
+  app.use(generalLimiter);
+  
   // Auth middleware
   await setupAuth(app);
 
@@ -308,6 +362,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const cartItem = await storage.addToCart(cartItemData);
+      
+      // Invalidate cart cache and send background notification
+      cache.del(`cart:${userId}`);
+      jobs.sendNotification('cart_add', userId, { beatId: cartItemData.beatId });
+      
       res.status(201).json(cartItem);
     } catch (error) {
       if (error instanceof z.ZodError) {
