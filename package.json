@@ -44,6 +44,7 @@
     "@tanstack/react-query": "^5.60.5",
     "@types/memoizee": "^0.4.12",
     "@types/multer": "^2.0.0",
+    "backblaze-b2": "^1.7.1",
     "bull": "^4.16.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
