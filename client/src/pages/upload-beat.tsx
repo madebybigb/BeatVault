@@ -258,6 +258,7 @@ export default function UploadBeat() {
                                   placeholder="Describe your beat, inspiration, or intended use..."
                                   rows={4}
                                   {...field}
+                                  value={field.value || ''}
                                   data-testid="textarea-beat-description"
                                 />
                               </FormControl>
@@ -595,7 +596,7 @@ export default function UploadBeat() {
                               <FormItem className="flex items-center space-x-2">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value}
+                                    checked={field.value || false}
                                     onCheckedChange={field.onChange}
                                     data-testid="checkbox-is-free"
                                   />
@@ -612,7 +613,7 @@ export default function UploadBeat() {
                               <FormItem className="flex items-center space-x-2">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value}
+                                    checked={field.value || false}
                                     onCheckedChange={field.onChange}
                                     data-testid="checkbox-is-exclusive"
                                   />
