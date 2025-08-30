@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Music, Search, ShoppingCart, User, LogOut, Upload, BarChart3, Menu } from 'lucide-react';
+import { Music, Search, ShoppingCart, User, LogOut, Upload, BarChart3, Menu, Heart } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
 import { cn } from '@/lib/utils';
@@ -194,9 +194,15 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/producer-dashboard" className="cursor-pointer" data-testid="link-analytics">
+                    <Link href="/producer-dashboard" className="cursor-pointer" data-testid="link-dashboard">
                       <BarChart3 className="mr-2 h-4 w-4" />
-                      Analytics
+                      Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/wishlist" className="cursor-pointer" data-testid="link-wishlist">
+                      <Heart className="mr-2 h-4 w-4" />
+                      Wishlist
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

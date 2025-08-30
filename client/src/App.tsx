@@ -15,6 +15,7 @@ import UploadBeat from "@/pages/upload-beat";
 import Cart from "@/pages/cart";
 import ProducerDashboard from "@/pages/producer-dashboard";
 import Profile from "@/pages/profile";
+import Wishlist from "@/pages/wishlist";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -33,6 +34,7 @@ function Router() {
           <Route path="/cart" component={Cart} />
           <Route path="/producer-dashboard" component={ProducerDashboard} />
           <Route path="/profile/:userId?" component={Profile} />
+          <Route path="/wishlist" component={Wishlist} />
           {/* Legacy route support */}
           <Route path="/upload" component={UploadBeat} />
           <Route path="/dashboard" component={ProducerDashboard} />

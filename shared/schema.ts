@@ -128,6 +128,18 @@ export const likes = pgTable("likes", {
   index("idx_likes_user_beat").on(table.userId, table.beatId), // Unique constraint index
 ]);
 
+// Wishlist table for saved beats
+export const wishlist = pgTable("wishlist", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  beatId: uuid("beat_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_wishlist_user_id").on(table.userId),
+  index("idx_wishlist_beat_id").on(table.beatId),
+  index("idx_wishlist_user_beat").on(table.userId, table.beatId), // Unique constraint index
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   beats: many(beats),
@@ -183,6 +195,17 @@ export const likesRelations = relations(likes, ({ one }) => ({
   }),
 }));
 
+export const wishlistRelations = relations(wishlist, ({ one }) => ({
+  user: one(users, {
+    fields: [wishlist.userId],
+    references: [users.id],
+  }),
+  beat: one(beats, {
+    fields: [wishlist.beatId],
+    references: [beats.id],
+  }),
+}));
+
 // Schemas for validation
 export const insertBeatSchema = createInsertSchema(beats).omit({
   id: true,
@@ -203,6 +226,11 @@ export const insertPurchaseSchema = createInsertSchema(purchases).omit({
 });
 
 export const insertLikeSchema = createInsertSchema(likes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertWishlistSchema = createInsertSchema(wishlist).omit({
   id: true,
   createdAt: true,
 });
@@ -241,3 +269,5 @@ export type Purchase = typeof purchases.$inferSelect;
 export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
 export type Like = typeof likes.$inferSelect;
 export type InsertLike = z.infer<typeof insertLikeSchema>;
+export type Wishlist = typeof wishlist.$inferSelect;
+export type InsertWishlist = z.infer<typeof insertWishlistSchema>;

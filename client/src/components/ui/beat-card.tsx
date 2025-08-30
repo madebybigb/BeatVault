@@ -1,12 +1,15 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Heart, Play, Pause, ShoppingCart, Download } from 'lucide-react';
+import { Heart, Play, Pause, ShoppingCart, Download, Bookmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/hooks/useCart';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
+import { isUnauthorizedError } from '@/lib/authUtils';
 import type { Beat } from '@shared/schema';
 
 interface BeatCardProps {
@@ -27,9 +30,11 @@ export function BeatCard({
   variant = 'grid' 
 }: BeatCardProps) {
   const [isLiked, setIsLiked] = useState(false);
+  const [isInWishlist, setIsInWishlist] = useState(false);
   const { addToCart, isAddingToCart } = useCart();
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handlePlayToggle = () => {
     if (isPlaying) {
@@ -66,6 +71,59 @@ export function BeatCard({
     }
     
     setIsLiked(!isLiked);
+  };
+
+  const wishlistMutation = useMutation({
+    mutationFn: async () => {
+      if (isInWishlist) {
+        const response = await apiRequest('DELETE', `/api/wishlist/${beat.id}`);
+        return response.json();
+      } else {
+        const response = await apiRequest('POST', '/api/wishlist', { beatId: beat.id });
+        return response.json();
+      }
+    },
+    onSuccess: () => {
+      setIsInWishlist(!isInWishlist);
+      queryClient.invalidateQueries({ queryKey: ['/api/wishlist'] });
+      toast({
+        title: isInWishlist ? "Removed from wishlist" : "Added to wishlist",
+        description: isInWishlist 
+          ? "Beat has been removed from your wishlist." 
+          : "Beat has been added to your wishlist.",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to update wishlist. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleWishlistToggle = () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to save beats to your wishlist.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    wishlistMutation.mutate();
   };
 
   if (variant === 'list') {
@@ -132,6 +190,20 @@ export function BeatCard({
               </Button>
               
               <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleWishlistToggle}
+                disabled={wishlistMutation.isPending}
+                className="w-8 h-8 p-0"
+                data-testid={`button-beat-wishlist-list-${beat.id}`}
+              >
+                <Bookmark className={cn(
+                  "h-4 w-4",
+                  isInWishlist ? "fill-blue-500 text-blue-500" : "text-muted-foreground"
+                )} />
+              </Button>
+              
+              <Button
                 onClick={handleAddToCart}
                 disabled={isAddingToCart}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground px-6"
@@ -191,18 +263,34 @@ export function BeatCard({
           </span>
         </div>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleLikeToggle}
-          className="absolute top-3 left-3 bg-black/70 hover:bg-black/80 rounded-full w-8 h-8 p-0"
-          data-testid={`button-beat-like-${beat.id}`}
-        >
-          <Heart className={cn(
-            "h-4 w-4",
-            isLiked ? "fill-red-500 text-red-500" : "text-white"
-          )} />
-        </Button>
+        <div className="absolute top-3 left-3 flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleLikeToggle}
+            className="bg-black/70 hover:bg-black/80 rounded-full w-8 h-8 p-0"
+            data-testid={`button-beat-like-${beat.id}`}
+          >
+            <Heart className={cn(
+              "h-4 w-4",
+              isLiked ? "fill-red-500 text-red-500" : "text-white"
+            )} />
+          </Button>
+          
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleWishlistToggle}
+            disabled={wishlistMutation.isPending}
+            className="bg-black/70 hover:bg-black/80 rounded-full w-8 h-8 p-0"
+            data-testid={`button-beat-wishlist-${beat.id}`}
+          >
+            <Bookmark className={cn(
+              "h-4 w-4",
+              isInWishlist ? "fill-blue-500 text-blue-500" : "text-white"
+            )} />
+          </Button>
+        </div>
       </div>
       
       <CardContent className="p-4">
