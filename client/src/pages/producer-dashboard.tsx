@@ -179,7 +179,15 @@ export default function ProducerDashboard() {
           </div>
           
           <div className="flex gap-3">
-            <Button variant="outline" size="lg">
+            <Button 
+              variant="outline" 
+              size="lg"
+              onClick={() => {
+                const analyticsTab = document.querySelector('[data-testid="tab-analytics"]') as HTMLElement;
+                analyticsTab?.click();
+              }}
+              data-testid="button-view-analytics"
+            >
               <BarChart3 className="h-4 w-4 mr-2" />
               View Analytics
             </Button>
@@ -301,18 +309,21 @@ export default function ProducerDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="h-80 flex items-end justify-between gap-2 p-4">
-                    {monthlyData.map((data, index) => (
-                      <div key={data.month} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="w-full bg-gray-800 rounded-lg overflow-hidden" style={{height: '200px'}}>
-                          <div 
-                            className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-lg transition-all duration-500"
-                            style={{height: `${(data.plays / 400) * 100}%`, marginTop: 'auto'}}
-                          />
+                    {monthlyData.map((data, index) => {
+                      const height = (data.plays / 400) * 100;
+                      return (
+                        <div key={data.month} className="flex-1 flex flex-col items-center gap-2">
+                          <div className="w-full bg-primary/20 rounded-lg overflow-hidden relative" style={{height: '200px'}}>
+                            <div 
+                              className="w-full bg-gray-800 rounded-lg transition-all duration-500 absolute bottom-0"
+                              style={{height: `${100 - height}%`}}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground">{data.month}</span>
+                          <span className="text-sm font-medium">{data.plays}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{data.month}</span>
-                        <span className="text-sm font-medium">{data.plays}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -516,18 +527,18 @@ export default function ProducerDashboard() {
                         </div>
                         
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold text-lg mb-1 truncate">{beat.title}</h3>
-                              <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2">
-                                <Badge variant="outline" className="text-xs">{beat.genre}</Badge>
-                                <span>•</span>
-                                <span>{beat.bpm} BPM</span>
-                                <span>•</span>
-                                <span>Key: {beat.key}</span>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-lg mb-1 truncate pr-2">{beat.title}</h3>
+                              <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2 flex-wrap">
+                                <Badge variant="outline" className="text-xs shrink-0">{beat.genre}</Badge>
+                                <span className="shrink-0">•</span>
+                                <span className="shrink-0">{beat.bpm} BPM</span>
+                                <span className="shrink-0">•</span>
+                                <span className="shrink-0">Key: {beat.key}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                               <Badge variant={beat.isActive ? 'default' : 'secondary'}>
                                 {beat.isActive ? 'Active' : 'Inactive'}
                               </Badge>
@@ -570,20 +581,46 @@ export default function ProducerDashboard() {
                         
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => window.open(`/beat/${beat.id}`, '_blank')}
+                            data-testid={`button-view-${beat.id}`}
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => window.location.href = `/edit-beat/${beat.id}`}
+                            data-testid={`button-edit-${beat.id}`}
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/beat/${beat.id}`);
+                              toast({
+                                title: "Link copied!",
+                                description: "Beat link has been copied to clipboard.",
+                              });
+                            }}
+                            data-testid={`button-share-${beat.id}`}
+                          >
                             <ExternalLink className="h-4 w-4" />
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => deleteBeatMutation.mutate(beat.id)}
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete "${beat.title}"? This action cannot be undone.`)) {
+                                deleteBeatMutation.mutate(beat.id);
+                              }
+                            }}
                             disabled={deleteBeatMutation.isPending}
+                            data-testid={`button-delete-${beat.id}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
