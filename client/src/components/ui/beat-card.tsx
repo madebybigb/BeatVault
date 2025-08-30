@@ -246,7 +246,7 @@ export const BeatCard = memo(function BeatCard({
             size="lg"
             variant="ghost"
             onClick={handlePlayToggle}
-            className="rounded-full bg-primary/90 hover:bg-primary text-primary-foreground w-16 h-16 play-button"
+            className="rounded-full bg-blue-600/90 hover:bg-blue-600 text-white w-16 h-16 flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-105"
             data-testid={`button-beat-play-${beat.id}`}
           >
             {isPlaying ? (
