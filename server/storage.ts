@@ -6,6 +6,8 @@ import {
   likes,
   wishlist,
   collections,
+  paymentSessions,
+  webhookEvents,
   type User,
   type UpsertUser,
   type Beat,
@@ -20,6 +22,10 @@ import {
   type InsertWishlist,
   type Collection,
   type InsertCollection,
+  type PaymentSession,
+  type InsertPaymentSession,
+  type WebhookEvent,
+  type InsertWebhookEvent,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ilike, or, sql, inArray } from "drizzle-orm";
@@ -76,6 +82,17 @@ export interface IStorage {
   getCollections(): Promise<Collection[]>;
   getCollection(id: string): Promise<Collection | undefined>;
   createCollection(collection: InsertCollection): Promise<Collection>;
+
+  // Payment operations
+  createPaymentSession(session: InsertPaymentSession): Promise<PaymentSession>;
+  getPaymentSession(id: string): Promise<PaymentSession | undefined>;
+  getPaymentSessionByDodoId(dodoPaymentId: string): Promise<PaymentSession | undefined>;
+  updatePaymentSession(id: string, updates: Partial<PaymentSession>): Promise<PaymentSession | undefined>;
+  
+  // Webhook operations
+  createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent>;
+  getWebhookEvent(eventId: string): Promise<WebhookEvent | undefined>;
+  markWebhookProcessed(eventId: string, error?: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -429,6 +446,62 @@ export class DatabaseStorage implements IStorage {
   async createCollection(collection: InsertCollection): Promise<Collection> {
     const [newCollection] = await db.insert(collections).values(collection).returning();
     return newCollection;
+  }
+
+  // Payment operations
+  async createPaymentSession(session: InsertPaymentSession): Promise<PaymentSession> {
+    const [newSession] = await db.insert(paymentSessions).values(session).returning();
+    return newSession;
+  }
+
+  async getPaymentSession(id: string): Promise<PaymentSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(paymentSessions)
+      .where(eq(paymentSessions.id, id));
+    return session;
+  }
+
+  async getPaymentSessionByDodoId(dodoPaymentId: string): Promise<PaymentSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(paymentSessions)
+      .where(eq(paymentSessions.dodoPaymentId, dodoPaymentId));
+    return session;
+  }
+
+  async updatePaymentSession(id: string, updates: Partial<PaymentSession>): Promise<PaymentSession | undefined> {
+    const [updatedSession] = await db
+      .update(paymentSessions)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(paymentSessions.id, id))
+      .returning();
+    return updatedSession;
+  }
+
+  // Webhook operations
+  async createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent> {
+    const [newEvent] = await db.insert(webhookEvents).values(event).returning();
+    return newEvent;
+  }
+
+  async getWebhookEvent(eventId: string): Promise<WebhookEvent | undefined> {
+    const [event] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.eventId, eventId));
+    return event;
+  }
+
+  async markWebhookProcessed(eventId: string, error?: string): Promise<void> {
+    await db
+      .update(webhookEvents)
+      .set({ 
+        processed: true, 
+        processedAt: new Date(),
+        error: error || null
+      })
+      .where(eq(webhookEvents.eventId, eventId));
   }
 }
 

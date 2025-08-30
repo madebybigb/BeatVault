@@ -13,6 +13,7 @@ import Home from "@/pages/home";
 import Browse from "@/pages/browse";
 import UploadBeat from "@/pages/upload-beat";
 import Cart from "@/pages/cart";
+import Checkout from "@/pages/checkout";
 import ProducerDashboard from "@/pages/producer-dashboard";
 import Profile from "@/pages/profile";
 import Wishlist from "@/pages/wishlist";
@@ -33,6 +34,7 @@ function Router() {
           <Route path="/browse" component={Browse} />
           <Route path="/upload-beat" component={UploadBeat} />
           <Route path="/cart" component={Cart} />
+          <Route path="/checkout" component={Checkout} />
           <Route path="/producer-dashboard" component={ProducerDashboard} />
           <Route path="/profile/:userId?" component={Profile} />
           <Route path="/wishlist" component={Wishlist} />

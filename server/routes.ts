@@ -4,7 +4,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { b2Service } from "./b2Service";
-import { insertBeatSchema, insertCartItemSchema, insertPurchaseSchema, insertLikeSchema } from "@shared/schema";
+import { insertBeatSchema, insertCartItemSchema, insertPurchaseSchema, insertLikeSchema, insertPaymentSessionSchema, insertWebhookEventSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -15,6 +15,8 @@ import { jobs } from "./backgroundJobs";
 import { apiBatcher } from "./apiBatching";
 import { redisService } from "./redis";
 import { initializeWebSocket, getWebSocketService } from "./websocket";
+import { dodoPaymentsService } from "./dodoPayments";
+import { Webhook } from "standardwebhooks";
 
 // Utility functions for validation
 const isValidUUID = (id: string): boolean => {
@@ -583,6 +585,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching sales:", error);
       res.status(500).json({ message: "Failed to fetch sales" });
+    }
+  });
+
+  // Payment routes
+  app.post('/api/checkout/create', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email || `user_${userId}@example.com`;
+      const userName = req.user.claims.name || `User ${userId}`;
+
+      // Get user's cart items with beat details
+      const cartItems = await storage.getCartItems(userId);
+      if (cartItems.length === 0) {
+        return res.status(400).json({ message: "Cart is empty" });
+      }
+
+      // Get beat details for each cart item
+      const cartWithBeats = await Promise.all(
+        cartItems.map(async (item) => {
+          const beat = await storage.getBeat(item.beatId);
+          if (!beat) {
+            throw new Error(`Beat not found: ${item.beatId}`);
+          }
+          return { item, beat };
+        })
+      );
+
+      // Create checkout session with Dodo Payments
+      const checkout = await dodoPaymentsService.createCheckoutSession(
+        userId,
+        cartWithBeats,
+        {
+          email: userEmail,
+          name: userName,
+        }
+      );
+
+      res.json(checkout);
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  app.get('/api/payment/session/:sessionId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { sessionId } = req.params;
+      const userId = req.user.claims.sub;
+
+      if (!validateUUID(sessionId, res, 'Session ID')) return;
+
+      const session = await storage.getPaymentSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Payment session not found" });
+      }
+
+      // Ensure user can only access their own sessions
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching payment session:", error);
+      res.status(500).json({ message: "Failed to fetch payment session" });
+    }
+  });
+
+  // Webhook endpoint for Dodo Payments
+  app.post('/api/webhooks/dodo', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+      const webhookSecret = process.env.DODO_WEBHOOK_KEY;
+      if (!webhookSecret) {
+        console.error('DODO_WEBHOOK_KEY not configured');
+        return res.status(500).json({ message: "Webhook secret not configured" });
+      }
+
+      const webhook = new Webhook(webhookSecret);
+      const rawBody = req.body.toString();
+      
+      const webhookHeaders = {
+        "webhook-id": req.headers["webhook-id"] as string || "",
+        "webhook-signature": req.headers["webhook-signature"] as string || "",
+        "webhook-timestamp": req.headers["webhook-timestamp"] as string || "",
+      };
+
+      // Verify webhook signature
+      await webhook.verify(rawBody, webhookHeaders);
+      const payload = JSON.parse(rawBody);
+
+      // Check if we've already processed this event
+      const existingEvent = await storage.getWebhookEvent(payload.id || payload.event_id);
+      if (existingEvent && existingEvent.processed) {
+        return res.status(200).json({ message: "Event already processed" });
+      }
+
+      // Store webhook event
+      const webhookEvent = await storage.createWebhookEvent({
+        eventId: payload.id || payload.event_id,
+        eventType: payload.type || payload.event_type,
+        payload: payload,
+        processed: false,
+      });
+
+      // Process the webhook based on event type
+      try {
+        switch (payload.type || payload.event_type) {
+          case 'payment.succeeded':
+            const paymentId = payload.data?.payment_id || payload.payment_id;
+            if (paymentId) {
+              await dodoPaymentsService.processSuccessfulPayment(paymentId);
+              console.log(`Successfully processed payment: ${paymentId}`);
+            }
+            break;
+
+          case 'payment.failed':
+            const failedPaymentId = payload.data?.payment_id || payload.payment_id;
+            if (failedPaymentId) {
+              await dodoPaymentsService.processFailedPayment(failedPaymentId);
+              console.log(`Processed failed payment: ${failedPaymentId}`);
+            }
+            break;
+
+          default:
+            console.log(`Unhandled webhook event type: ${payload.type || payload.event_type}`);
+        }
+
+        // Mark webhook as processed
+        await storage.markWebhookProcessed(payload.id || payload.event_id);
+        
+      } catch (processingError) {
+        console.error('Error processing webhook:', processingError);
+        await storage.markWebhookProcessed(
+          payload.id || payload.event_id, 
+          processingError instanceof Error ? processingError.message : 'Unknown error'
+        );
+      }
+
+      res.status(200).json({ message: "Webhook processed successfully" });
+    } catch (error) {
+      console.error("Webhook verification failed:", error);
+      res.status(400).json({ message: "Webhook verification failed" });
     }
   });
 

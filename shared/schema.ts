@@ -222,6 +222,45 @@ export const searchSuggestions = pgTable("search_suggestions", {
   index("idx_search_popularity").on(table.popularity),
 ]);
 
+// Payment sessions for Dodo Payments
+export const paymentSessions = pgTable("payment_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  dodoPaymentId: varchar("dodo_payment_id"), // Dodo Payment ID
+  checkoutUrl: varchar("checkout_url"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  status: varchar("status", { enum: ["pending", "processing", "succeeded", "failed", "cancelled"] }).default("pending"),
+  cartItems: jsonb("cart_items").notNull(), // Store cart items at time of payment
+  metadata: jsonb("metadata"), // Additional payment metadata
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_payment_sessions_user").on(table.userId),
+  index("idx_payment_sessions_dodo_id").on(table.dodoPaymentId),
+  index("idx_payment_sessions_status").on(table.status),
+  index("idx_payment_sessions_expires").on(table.expiresAt),
+]);
+
+// Webhook events for payment tracking
+export const webhookEvents = pgTable("webhook_events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id").unique().notNull(), // Dodo webhook event ID
+  eventType: varchar("event_type").notNull(), // payment.succeeded, payment.failed, etc.
+  paymentSessionId: uuid("payment_session_id"),
+  payload: jsonb("payload").notNull(),
+  processed: boolean("processed").default(false),
+  processedAt: timestamp("processed_at"),
+  error: text("error"), // Store any processing errors
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_webhook_events_event_id").on(table.eventId),
+  index("idx_webhook_events_type").on(table.eventType),
+  index("idx_webhook_events_session").on(table.paymentSessionId),
+  index("idx_webhook_events_processed").on(table.processed),
+]);
+
 // Licensing information
 export const licenses = pgTable("licenses", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -342,6 +381,21 @@ export const analyticsRelations = relations(analytics, ({ one }) => ({
   }),
 }));
 
+export const paymentSessionsRelations = relations(paymentSessions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [paymentSessions.userId],
+    references: [users.id],
+  }),
+  webhookEvents: many(webhookEvents),
+}));
+
+export const webhookEventsRelations = relations(webhookEvents, ({ one }) => ({
+  paymentSession: one(paymentSessions, {
+    fields: [webhookEvents.paymentSessionId],
+    references: [paymentSessions.id],
+  }),
+}));
+
 export const licensesRelations = relations(licenses, ({ one }) => ({
   purchase: one(purchases, {
     fields: [licenses.purchaseId],
@@ -399,6 +453,17 @@ export const insertAnalyticsSchema = createInsertSchema(analytics).omit({
   date: true,
 });
 
+export const insertPaymentSessionSchema = createInsertSchema(paymentSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertLicenseSchema = createInsertSchema(licenses).omit({
   id: true,
   createdAt: true,
@@ -448,5 +513,9 @@ export type ListeningHistory = typeof listeningHistory.$inferSelect;
 export type InsertListeningHistory = z.infer<typeof insertListeningHistorySchema>;
 export type Analytics = typeof analytics.$inferSelect;
 export type InsertAnalytics = z.infer<typeof insertAnalyticsSchema>;
+export type PaymentSession = typeof paymentSessions.$inferSelect;
+export type InsertPaymentSession = z.infer<typeof insertPaymentSessionSchema>;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
 export type License = typeof licenses.$inferSelect;
 export type InsertLicense = z.infer<typeof insertLicenseSchema>;
