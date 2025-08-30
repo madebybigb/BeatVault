@@ -22,6 +22,8 @@ import { cdnService } from "./cdnService";
 import { recommendationService } from "./recommendationService";
 import { bulkUploadService } from "./bulkUploadService";
 import { simpleAnalyticsService } from "./simpleAnalyticsService";
+import { socialService } from "./socialService";
+import { pwaService } from "./pwaService";
 import { Webhook } from "standardwebhooks";
 import type { SearchFilters } from "@shared/schema";
 
@@ -1325,6 +1327,244 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Webhook verification failed:", error);
       res.status(400).json({ message: "Webhook verification failed" });
+    }
+  });
+
+  // ======================
+  // SOCIAL & COMMUNITY ROUTES
+  // ======================
+
+  // Producer profiles
+  app.get('/api/producer/:producerId/profile', async (req: any, res) => {
+    try {
+      const { producerId } = req.params;
+      const viewerId = req.user?.claims?.sub;
+
+      if (!validateUUID(producerId, res, 'Producer ID')) return;
+
+      const profile = await socialService.getProducerProfile(producerId, viewerId);
+      if (!profile) {
+        return res.status(404).json({ message: "Producer not found" });
+      }
+
+      res.json(profile);
+    } catch (error) {
+      console.error("Get producer profile error:", error);
+      res.status(500).json({ message: "Failed to get producer profile" });
+    }
+  });
+
+  // Follow/unfollow producer
+  app.post('/api/producer/:producerId/follow', isAuthenticated, async (req: any, res) => {
+    try {
+      const { producerId } = req.params;
+      const followerId = req.user.claims.sub;
+
+      if (!validateUUID(producerId, res, 'Producer ID')) return;
+
+      const result = await socialService.toggleFollow(followerId, producerId);
+      res.json(result);
+    } catch (error) {
+      console.error("Toggle follow error:", error);
+      res.status(500).json({ message: "Failed to update follow status" });
+    }
+  });
+
+  // Get followers
+  app.get('/api/producer/:producerId/followers', async (req: any, res) => {
+    try {
+      const { producerId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      if (!validateUUID(producerId, res, 'Producer ID')) return;
+
+      const followers = await socialService.getFollowers(producerId, limit, offset);
+      res.json(followers);
+    } catch (error) {
+      console.error("Get followers error:", error);
+      res.status(500).json({ message: "Failed to get followers" });
+    }
+  });
+
+  // Comment routes
+  app.get('/api/beat/:beatId/comments', async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+      const userId = req.user?.claims?.sub;
+
+      if (!validateUUID(beatId, res, 'Beat ID')) return;
+
+      const comments = await socialService.getBeatComments(beatId, userId);
+      res.json(comments);
+    } catch (error) {
+      console.error("Get beat comments error:", error);
+      res.status(500).json({ message: "Failed to get comments" });
+    }
+  });
+
+  app.post('/api/beat/:beatId/comments', isAuthenticated, async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+      const userId = req.user.claims.sub;
+      const { content, parentCommentId } = req.body;
+
+      if (!validateUUID(beatId, res, 'Beat ID')) return;
+      if (parentCommentId && !validateUUID(parentCommentId, res, 'Parent Comment ID')) return;
+
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ message: "Comment content is required" });
+      }
+
+      const comment = await socialService.addComment(beatId, userId, content.trim(), parentCommentId);
+      res.json(comment);
+    } catch (error) {
+      console.error("Add comment error:", error);
+      res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  app.post('/api/comment/:commentId/like', isAuthenticated, async (req: any, res) => {
+    try {
+      const { commentId } = req.params;
+      const userId = req.user.claims.sub;
+
+      if (!validateUUID(commentId, res, 'Comment ID')) return;
+
+      const result = await socialService.toggleCommentLike(commentId, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Toggle comment like error:", error);
+      res.status(500).json({ message: "Failed to update comment like" });
+    }
+  });
+
+  // Challenge routes
+  app.get('/api/challenges', async (req: any, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const type = req.query.type as string;
+
+      const challenges = await socialService.getActiveChallenges(limit, type);
+      res.json(challenges);
+    } catch (error) {
+      console.error("Get challenges error:", error);
+      res.status(500).json({ message: "Failed to get challenges" });
+    }
+  });
+
+  app.post('/api/challenges', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const challengeData = req.body;
+
+      if (!challengeData.title || !challengeData.description || !challengeData.type || !challengeData.endDate) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const challenge = await socialService.createChallenge(userId, challengeData);
+      res.json(challenge);
+    } catch (error) {
+      console.error("Create challenge error:", error);
+      res.status(500).json({ message: "Failed to create challenge" });
+    }
+  });
+
+  // Opportunities routes
+  app.get('/api/opportunities', async (req: any, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const type = req.query.type as string;
+      const genre = req.query.genre as string;
+
+      const opportunities = await socialService.getOpportunities(limit, type, genre);
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Get opportunities error:", error);
+      res.status(500).json({ message: "Failed to get opportunities" });
+    }
+  });
+
+  // ======================
+  // PWA & OFFLINE ROUTES  
+  // ======================
+
+  // PWA Manifest
+  app.get('/manifest.json', (req, res) => {
+    res.json(pwaService.getManifestData());
+  });
+
+  // Offline cache management
+  app.get('/api/offline/cache', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const cachedBeats = await pwaService.getCachedBeats(userId);
+      res.json(cachedBeats);
+    } catch (error) {
+      console.error("Get cached beats error:", error);
+      res.status(500).json({ message: "Failed to get cached beats" });
+    }
+  });
+
+  app.post('/api/offline/cache/:beatId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+      const userId = req.user.claims.sub;
+      const { audioUrl, cacheSize } = req.body;
+
+      if (!validateUUID(beatId, res, 'Beat ID')) return;
+
+      const cached = await pwaService.cacheBeat(userId, beatId, audioUrl, cacheSize);
+      res.json(cached);
+    } catch (error) {
+      console.error("Cache beat error:", error);
+      res.status(500).json({ message: "Failed to cache beat" });
+    }
+  });
+
+  // Push notification routes
+  app.post('/api/notifications/subscribe', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { subscription, userAgent } = req.body;
+
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        return res.status(400).json({ message: "Invalid subscription data" });
+      }
+
+      const pushSubscription = await pwaService.subscribeToPush(userId, subscription, userAgent);
+      res.json(pushSubscription);
+    } catch (error) {
+      console.error("Subscribe to push error:", error);
+      res.status(500).json({ message: "Failed to subscribe to notifications" });
+    }
+  });
+
+  // Social sharing routes  
+  app.get('/api/beat/:beatId/share', async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+
+      if (!validateUUID(beatId, res, 'Beat ID')) return;
+
+      const beat = await storage.getBeat(beatId);
+      if (!beat) {
+        return res.status(404).json({ message: "Beat not found" });
+      }
+
+      const shareUrl = `${req.protocol}://${req.get('host')}/beat/${beatId}`;
+      const shareText = `Check out "${beat.title}" by ${beat.producer} on BeatHub!`;
+
+      const shareData = {
+        url: shareUrl,
+        text: shareText,
+        title: beat.title
+      };
+
+      res.json(shareData);
+    } catch (error) {
+      console.error("Get share data error:", error);
+      res.status(500).json({ message: "Failed to get share data" });
     }
   });
 

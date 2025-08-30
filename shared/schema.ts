@@ -184,11 +184,183 @@ export const followers = pgTable("followers", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   followerId: varchar("follower_id").notNull(),
   followingId: varchar("following_id").notNull(),
+  notificationsEnabled: boolean("notifications_enabled").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_followers_follower").on(table.followerId),
   index("idx_followers_following").on(table.followingId),
   index("idx_followers_pair").on(table.followerId, table.followingId), // Unique constraint
+]);
+
+// Comments table for beat discussions
+export const comments = pgTable("comments", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  beatId: uuid("beat_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  content: text("content").notNull(),
+  parentCommentId: uuid("parent_comment_id"), // For nested replies
+  isEdited: boolean("is_edited").default(false),
+  editedAt: timestamp("edited_at"),
+  isDeleted: boolean("is_deleted").default(false),
+  likeCount: integer("like_count").default(0),
+  replyCount: integer("reply_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_comments_beat").on(table.beatId),
+  index("idx_comments_user").on(table.userId),
+  index("idx_comments_parent").on(table.parentCommentId),
+  index("idx_comments_created").on(table.createdAt),
+]);
+
+// Comment likes table
+export const commentLikes = pgTable("comment_likes", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  commentId: uuid("comment_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_comment_likes_comment").on(table.commentId),
+  index("idx_comment_likes_user").on(table.userId),
+  index("idx_comment_likes_unique").on(table.commentId, table.userId), // Unique constraint
+]);
+
+// Community challenges table
+export const challenges = pgTable("challenges", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title").notNull(),
+  description: text("description").notNull(),
+  createdByUserId: varchar("created_by_user_id").notNull(),
+  type: varchar("type", { enum: ["beat_battle", "remix_contest", "sample_flip", "theme_challenge"] }).notNull(),
+  genre: varchar("genre"),
+  bpm: integer("bpm"),
+  key: varchar("key"),
+  rules: jsonb("rules"), // JSON array of rules
+  prizes: jsonb("prizes"), // JSON array of prizes
+  submissionCount: integer("submission_count").default(0),
+  maxSubmissions: integer("max_submissions").default(100),
+  isActive: boolean("is_active").default(true),
+  isFeatured: boolean("is_featured").default(false),
+  startDate: timestamp("start_date").defaultNow(),
+  endDate: timestamp("end_date").notNull(),
+  judgeUserIds: jsonb("judge_user_ids"), // JSON array of judge user IDs
+  bannerImageUrl: varchar("banner_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_challenges_type").on(table.type),
+  index("idx_challenges_active").on(table.isActive),
+  index("idx_challenges_featured").on(table.isFeatured),
+  index("idx_challenges_dates").on(table.startDate, table.endDate),
+  index("idx_challenges_creator").on(table.createdByUserId),
+]);
+
+// Challenge submissions table
+export const challengeSubmissions = pgTable("challenge_submissions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  challengeId: uuid("challenge_id").notNull(),
+  beatId: uuid("beat_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  description: text("description"),
+  isWinner: boolean("is_winner").default(false),
+  placement: integer("placement"), // 1st, 2nd, 3rd place, etc.
+  voteCount: integer("vote_count").default(0),
+  judgeScore: decimal("judge_score", { precision: 5, scale: 2 }), // Out of 100
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_submissions_challenge").on(table.challengeId),
+  index("idx_submissions_beat").on(table.beatId),
+  index("idx_submissions_user").on(table.userId),
+  index("idx_submissions_winner").on(table.isWinner),
+  index("idx_submissions_unique").on(table.challengeId, table.beatId), // One submission per beat per challenge
+]);
+
+// Community showcases table
+export const showcases = pgTable("showcases", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  curatedByUserId: varchar("curated_by_user_id").notNull(),
+  type: varchar("type", { enum: ["weekly_picks", "genre_spotlight", "rising_artists", "staff_picks"] }).notNull(),
+  beatIds: jsonb("beat_ids").notNull(), // JSON array of featured beat IDs
+  isActive: boolean("is_active").default(true),
+  isFeatured: boolean("is_featured").default(false),
+  viewCount: integer("view_count").default(0),
+  bannerImageUrl: varchar("banner_image_url"),
+  publishedAt: timestamp("published_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_showcases_type").on(table.type),
+  index("idx_showcases_active").on(table.isActive),
+  index("idx_showcases_featured").on(table.isFeatured),
+  index("idx_showcases_published").on(table.publishedAt),
+  index("idx_showcases_curator").on(table.curatedByUserId),
+]);
+
+// Opportunities table (label signups, collaborations, etc.)
+export const opportunities = pgTable("opportunities", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title").notNull(),
+  description: text("description").notNull(),
+  postedByUserId: varchar("posted_by_user_id").notNull(),
+  type: varchar("type", { enum: ["collaboration", "label_signup", "remix_request", "ghost_production", "mixing_mastering"] }).notNull(),
+  genre: varchar("genre"),
+  budget: decimal("budget", { precision: 10, scale: 2 }), // Optional budget
+  currency: varchar("currency").default("USD"),
+  location: varchar("location"), // Optional location requirement
+  isRemote: boolean("is_remote").default(true),
+  requirements: jsonb("requirements"), // JSON array of requirements
+  contactInfo: jsonb("contact_info"), // Contact details
+  applicationCount: integer("application_count").default(0),
+  maxApplications: integer("max_applications"),
+  isActive: boolean("is_active").default(true),
+  isFeatured: boolean("is_featured").default(false),
+  deadline: timestamp("deadline"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_opportunities_type").on(table.type),
+  index("idx_opportunities_active").on(table.isActive),
+  index("idx_opportunities_featured").on(table.isFeatured),
+  index("idx_opportunities_deadline").on(table.deadline),
+  index("idx_opportunities_poster").on(table.postedByUserId),
+  index("idx_opportunities_genre").on(table.genre),
+]);
+
+// PWA offline cache table
+export const offlineCache = pgTable("offline_cache", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  beatId: uuid("beat_id").notNull(),
+  audioUrl: varchar("audio_url").notNull(),
+  cachedAt: timestamp("cached_at").defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
+  cacheSize: integer("cache_size"), // Size in bytes
+  isPreloaded: boolean("is_preloaded").default(false), // User vs automatic caching
+}, (table) => [
+  index("idx_cache_user").on(table.userId),
+  index("idx_cache_beat").on(table.beatId),
+  index("idx_cache_accessed").on(table.lastAccessedAt),
+  index("idx_cache_user_beat").on(table.userId, table.beatId), // Unique constraint
+]);
+
+// Push notification subscriptions for PWA
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  userAgent: text("user_agent"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at").defaultNow(),
+}, (table) => [
+  index("idx_push_user").on(table.userId),
+  index("idx_push_active").on(table.isActive),
+  index("idx_push_endpoint").on(table.endpoint), // Unique constraint needed
 ]);
 
 // User listening history for AI recommendations
@@ -586,6 +758,34 @@ export interface BackgroundJob {
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Comment types
+export type InsertComment = typeof comments.$inferInsert;
+export type Comment = typeof comments.$inferSelect;
+
+// Challenge types  
+export type InsertChallenge = typeof challenges.$inferInsert;
+export type Challenge = typeof challenges.$inferSelect;
+export type InsertChallengeSubmission = typeof challengeSubmissions.$inferInsert;
+export type ChallengeSubmission = typeof challengeSubmissions.$inferSelect;
+
+// Showcase types
+export type InsertShowcase = typeof showcases.$inferInsert;
+export type Showcase = typeof showcases.$inferSelect;
+
+// Opportunity types
+export type InsertOpportunity = typeof opportunities.$inferInsert;
+export type Opportunity = typeof opportunities.$inferSelect;
+
+// Social types
+export type InsertFollower = typeof followers.$inferInsert;
+export type Follower = typeof followers.$inferSelect;
+
+// PWA types
+export type InsertOfflineCache = typeof offlineCache.$inferInsert;
+export type OfflineCache = typeof offlineCache.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type Beat = typeof beats.$inferSelect;
 export type InsertBeat = z.infer<typeof insertBeatSchema>;
 export type CartItem = typeof cartItems.$inferSelect;

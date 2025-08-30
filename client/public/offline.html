@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BeatHub - Offline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 12px;
+            color: white;
+        }
+
+        p {
+            color: #a1a1aa;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .offline-features {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 24px 0;
+            text-align: left;
+        }
+
+        .offline-features h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #3b82f6;
+        }
+
+        .offline-features ul {
+            list-style: none;
+        }
+
+        .offline-features li {
+            padding: 4px 0;
+            color: #d1d5db;
+            font-size: 14px;
+        }
+
+        .offline-features li:before {
+            content: "✓ ";
+            color: #10b981;
+            font-weight: bold;
+        }
+
+        .retry-btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .retry-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .retry-btn:active {
+            transform: translateY(0);
+        }
+
+        .status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .online {
+            color: #10b981;
+        }
+
+        .offline {
+            color: #ef4444;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 0 10px;
+            }
+            
+            h1 {
+                font-size: 20px;
+            }
+            
+            .icon {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🎵</div>
+        
+        <h1>You're Offline</h1>
+        
+        <p>
+            You're currently offline, but you can still enjoy BeatHub with our cached content.
+        </p>
+
+        <div class="offline-features">
+            <h3>Available Offline:</h3>
+            <ul>
+                <li>Previously cached beats</li>
+                <li>Your downloaded tracks</li>
+                <li>Browse your music library</li>
+                <li>View producer profiles</li>
+            </ul>
+        </div>
+
+        <button class="retry-btn" onclick="checkConnection()">
+            Check Connection
+        </button>
+
+        <div class="status" id="status">
+            Status: <span id="connection-status" class="offline">Offline</span>
+        </div>
+    </div>
+
+    <script>
+        function updateConnectionStatus() {
+            const statusElement = document.getElementById('connection-status');
+            const retryBtn = document.querySelector('.retry-btn');
+            
+            if (navigator.onLine) {
+                statusElement.textContent = 'Online';
+                statusElement.className = 'online';
+                retryBtn.textContent = 'Go to BeatHub';
+                retryBtn.onclick = () => window.location.href = '/';
+            } else {
+                statusElement.textContent = 'Offline';
+                statusElement.className = 'offline';
+                retryBtn.textContent = 'Check Connection';
+                retryBtn.onclick = checkConnection;
+            }
+        }
+
+        function checkConnection() {
+            // Force a network request to check connectivity
+            fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                .then(() => {
+                    // If successful, navigate back to the app
+                    window.location.href = '/';
+                })
+                .catch(() => {
+                    // Still offline, show a message
+                    const statusElement = document.getElementById('status');
+                    statusElement.innerHTML = 'Status: <span class="offline">Still offline - check your connection</span>';
+                    
+                    // Reset the message after 3 seconds
+                    setTimeout(() => {
+                        updateConnectionStatus();
+                    }, 3000);
+                });
+        }
+
+        // Listen for online/offline events
+        window.addEventListener('online', () => {
+            updateConnectionStatus();
+            // Auto-redirect when back online
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        });
+        
+        window.addEventListener('offline', updateConnectionStatus);
+
+        // Initial status check
+        updateConnectionStatus();
+
+        // Periodic connection check (every 30 seconds)
+        setInterval(() => {
+            if (!navigator.onLine) {
+                fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                    .then(() => {
+                        // Connection restored
+                        window.location.href = '/';
+                    })
+                    .catch(() => {
+                        // Still offline
+                    });
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

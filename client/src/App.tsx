@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { StickyPlayer } from "@/components/layout/sticky-player";
+import { MobileNavigation } from "@/components/mobile/mobile-navigation";
+import { PWAInstallPrompt } from "@/components/mobile/pwa-install-prompt";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 
 // Import pages
@@ -81,6 +83,10 @@ function AppWithPlayer() {
         onPause={pause}
         onClose={close}
       />
+      
+      {/* Mobile-specific components */}
+      <MobileNavigation />
+      <PWAInstallPrompt />
     </>
   );
 }

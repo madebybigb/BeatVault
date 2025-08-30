@@ -165,4 +165,59 @@
       transform: translateY(0);
     }
   }
+
+  /* Mobile-first responsive design and PWA optimizations */
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+
+  .scroll-smooth {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Safe area support for iOS */
+  @supports (padding: max(0px)) {
+    .safe-area-bottom {
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
+  }
+
+  /* Mobile viewport optimizations */
+  @media screen and (max-width: 768px) {
+    body {
+      font-size: 16px; /* Prevent zoom on iOS */
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Optimize tap targets for mobile */
+    button, .button, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Hide scrollbars on mobile for cleaner look */
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  /* PWA splash screen background */
+  @media (display-mode: standalone) {
+    body {
+      background-color: hsl(var(--background));
+    }
+  }
+
+  /* Improved touch feedback */
+  .touch-feedback {
+    -webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
 }
