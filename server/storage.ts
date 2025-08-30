@@ -144,26 +144,29 @@ export class DatabaseStorage implements IStorage {
       conditions.push(
         or(
           ilike(beats.title, `%${filters.search}%`),
-          ilike(beats.description, `%${filters.search}%`),
-          sql`${beats.tags} && ARRAY[${filters.search}]::text[]`
-        )
+          ilike(beats.description, `%${filters.search}%`)
+        )!
       );
     }
 
-    let query = db
+    const baseQuery = db
       .select()
       .from(beats)
       .where(and(...conditions))
       .orderBy(desc(beats.createdAt));
 
-    if (filters?.limit) {
-      query = query.limit(Math.min(filters.limit, 100)); // Cap at 100 for performance
-    }
-    if (filters?.offset) {
-      query = query.offset(filters.offset);
+    const limit = filters?.limit ? Math.min(filters.limit, 100) : undefined;
+    const offset = filters?.offset;
+
+    if (limit && offset) {
+      return await baseQuery.limit(limit).offset(offset);
+    } else if (limit) {
+      return await baseQuery.limit(limit);
+    } else if (offset) {
+      return await baseQuery.offset(offset);
     }
 
-    return await query;
+    return await baseQuery;
   }
 
   async getBeat(id: string): Promise<Beat | undefined> {

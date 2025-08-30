@@ -1,50 +1,52 @@
 import Redis from 'ioredis';
 
 class RedisService {
-  private redis: Redis;
+  private redis?: Redis;
   private connected = false;
 
   constructor() {
-    // Use Redis Cloud or local Redis
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    // Only initialize Redis if URL is provided
+    const redisUrl = process.env.REDIS_URL;
     
-    this.redis = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
-      enableReadyCheck: true,
-      maxRetriesPerRequest: null,
-      lazyConnect: true,
-    });
+    if (redisUrl) {
+      this.redis = new Redis(redisUrl, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: true,
+        lazyConnect: true
+      });
 
-    this.redis.on('connect', () => {
-      console.log('Redis connected successfully');
-      this.connected = true;
-    });
+      this.redis.on('connect', () => {
+        console.log('Redis connected successfully');
+        this.connected = true;
+      });
 
-    this.redis.on('error', (error) => {
-      console.error('Redis connection error:', error);
-      this.connected = false;
-    });
+      this.redis.on('error', (error) => {
+        console.warn('Redis connection error (falling back to memory):', error.message);
+        this.connected = false;
+      });
 
-    this.redis.on('ready', () => {
-      console.log('Redis ready for commands');
-    });
+      this.redis.on('ready', () => {
+        console.log('Redis ready for commands');
+      });
+    } else {
+      console.log('Redis URL not provided, using memory-only mode');
+    }
   }
 
   async connect() {
-    if (!this.connected) {
+    if (this.redis && !this.connected) {
       try {
         await this.redis.connect();
       } catch (error) {
-        console.error('Failed to connect to Redis:', error);
-        // Fall back to memory storage if Redis is not available
+        console.warn('Failed to connect to Redis, continuing without cache:', error instanceof Error ? error.message : 'Unknown error');
+        this.connected = false;
       }
     }
   }
 
   async get(key: string): Promise<string | null> {
     try {
-      if (!this.connected) return null;
+      if (!this.connected || !this.redis) return null;
       return await this.redis.get(key);
     } catch (error) {
       console.error('Redis GET error:', error);
@@ -54,7 +56,7 @@ class RedisService {
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
     try {
-      if (!this.connected) return false;
+      if (!this.connected || !this.redis) return false;
       
       if (ttlSeconds) {
         await this.redis.setex(key, ttlSeconds, value);
@@ -70,7 +72,7 @@ class RedisService {
 
   async del(key: string): Promise<boolean> {
     try {
-      if (!this.connected) return false;
+      if (!this.connected || !this.redis) return false;
       await this.redis.del(key);
       return true;
     } catch (error) {
@@ -81,7 +83,7 @@ class RedisService {
 
   async exists(key: string): Promise<boolean> {
     try {
-      if (!this.connected) return false;
+      if (!this.connected || !this.redis) return false;
       const result = await this.redis.exists(key);
       return result === 1;
     } catch (error) {
@@ -92,7 +94,7 @@ class RedisService {
 
   async increment(key: string, ttlSeconds?: number): Promise<number> {
     try {
-      if (!this.connected) return 0;
+      if (!this.connected || !this.redis) return 0;
       
       const result = await this.redis.incr(key);
       if (ttlSeconds && result === 1) {
@@ -150,7 +152,7 @@ class RedisService {
   async invalidateBeatsCache(): Promise<void> {
     // Get all beat cache keys and delete them
     try {
-      if (!this.connected) return;
+      if (!this.connected || !this.redis) return;
       const keys = await this.redis.keys('beats:*');
       if (keys.length > 0) {
         await this.redis.del(...keys);
@@ -166,7 +168,11 @@ class RedisService {
 
   async disconnect(): Promise<void> {
     if (this.redis) {
-      await this.redis.disconnect();
+      try {
+        await this.redis.disconnect();
+      } catch (error) {
+        console.warn('Error disconnecting Redis:', error instanceof Error ? error.message : 'Unknown error');
+      }
     }
   }
 }
