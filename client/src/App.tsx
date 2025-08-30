@@ -11,6 +11,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import Browse from "@/pages/browse";
+import Search from "@/pages/search";
 import UploadBeat from "@/pages/upload-beat";
 import Cart from "@/pages/cart";
 import Checkout from "@/pages/checkout";
@@ -32,6 +33,7 @@ function Router() {
         <>
           <Route path="/" component={Home} />
           <Route path="/browse" component={Browse} />
+          <Route path="/search" component={Search} />
           <Route path="/upload-beat" component={UploadBeat} />
           <Route path="/cart" component={Cart} />
           <Route path="/checkout" component={Checkout} />

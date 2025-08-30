@@ -61,6 +61,12 @@ export const beats = pgTable("beats", {
   artworkUrl: varchar("artwork_url"),
   stemsUrl: varchar("stems_url"),
   beatTagUrl: varchar("beat_tag_url"),
+  waveformUrl: varchar("waveform_url"), // URL to generated waveform data
+  previewUrl: varchar("preview_url"), // URL to 30-second preview clip
+  audioFormat: varchar("audio_format", { length: 10 }).default("mp3"), // mp3, wav, flac
+  fileSize: integer("file_size"), // in bytes
+  sampleRate: integer("sample_rate"), // e.g., 44100
+  bitRate: integer("bit_rate"), // e.g., 320
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   bpm: integer("bpm").notNull(),
   key: varchar("key", { length: 10 }).notNull(),
@@ -90,6 +96,15 @@ export const beats = pgTable("beats", {
   index("idx_beats_active_genre").on(table.isActive, table.genre),
   index("idx_beats_active_created").on(table.isActive, table.createdAt),
   index("idx_beats_producer_active").on(table.producerId, table.isActive),
+  // Advanced search indexes
+  index("idx_beats_bpm").on(table.bpm),
+  index("idx_beats_key").on(table.key),
+  index("idx_beats_tags").on(table.tags),
+  index("idx_beats_duration").on(table.duration),
+  // Multi-column indexes for advanced filtering
+  index("idx_beats_genre_mood").on(table.genre, table.mood),
+  index("idx_beats_bpm_key").on(table.bpm, table.key),
+  index("idx_beats_price_free").on(table.price, table.isFree),
 ]);
 
 // Cart items table with indexes
@@ -213,13 +228,55 @@ export const analytics = pgTable("analytics", {
 export const searchSuggestions = pgTable("search_suggestions", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   query: varchar("query").notNull(),
-  category: varchar("category").notNull(), // 'beat', 'producer', 'genre', 'tag'
+  category: varchar("category").notNull(), // 'beat', 'producer', 'genre', 'tag', 'bpm', 'key'
   popularity: integer("popularity").default(1),
+  resultCount: integer("result_count").default(0), // Number of results for this query
   lastUsed: timestamp("last_used").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_search_query").on(table.query),
   index("idx_search_category").on(table.category),
   index("idx_search_popularity").on(table.popularity),
+  index("idx_search_result_count").on(table.resultCount),
+  index("idx_search_query_category").on(table.query, table.category),
+]);
+
+// Search analytics for improving search performance
+export const searchAnalytics = pgTable("search_analytics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  query: varchar("query").notNull(),
+  userId: varchar("user_id"),
+  resultCount: integer("result_count").notNull(),
+  clickedBeatId: uuid("clicked_beat_id"), // Which beat was clicked from search results
+  searchType: varchar("search_type").notNull(), // 'text', 'filter', 'advanced'
+  filters: jsonb("filters"), // Applied filters as JSON
+  responseTime: integer("response_time"), // Search response time in ms
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_search_analytics_query").on(table.query),
+  index("idx_search_analytics_user").on(table.userId),
+  index("idx_search_analytics_created").on(table.createdAt),
+  index("idx_search_analytics_clicked_beat").on(table.clickedBeatId),
+]);
+
+// Audio processing jobs for waveform and preview generation
+export const audioProcessingJobs = pgTable("audio_processing_jobs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  beatId: uuid("beat_id").notNull(),
+  jobType: varchar("job_type").notNull(), // 'waveform', 'preview', 'format_conversion'
+  status: varchar("status", { enum: ["pending", "processing", "completed", "failed"] }).default("pending"),
+  inputUrl: varchar("input_url").notNull(),
+  outputUrl: varchar("output_url"),
+  metadata: jsonb("metadata"), // Job-specific metadata
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_audio_jobs_beat").on(table.beatId),
+  index("idx_audio_jobs_status").on(table.status),
+  index("idx_audio_jobs_type").on(table.jobType),
+  index("idx_audio_jobs_created").on(table.createdAt),
 ]);
 
 // Payment sessions for Dodo Payments
@@ -403,6 +460,24 @@ export const licensesRelations = relations(licenses, ({ one }) => ({
   }),
 }));
 
+export const searchAnalyticsRelations = relations(searchAnalytics, ({ one }) => ({
+  user: one(users, {
+    fields: [searchAnalytics.userId],
+    references: [users.id],
+  }),
+  clickedBeat: one(beats, {
+    fields: [searchAnalytics.clickedBeatId],
+    references: [beats.id],
+  }),
+}));
+
+export const audioProcessingJobsRelations = relations(audioProcessingJobs, ({ one }) => ({
+  beat: one(beats, {
+    fields: [audioProcessingJobs.beatId],
+    references: [beats.id],
+  }),
+}));
+
 // Schemas for validation
 export const insertBeatSchema = createInsertSchema(beats).omit({
   id: true,
@@ -469,6 +544,22 @@ export const insertLicenseSchema = createInsertSchema(licenses).omit({
   createdAt: true,
 });
 
+export const insertSearchSuggestionSchema = createInsertSchema(searchSuggestions).omit({
+  id: true,
+  lastUsed: true,
+  createdAt: true,
+});
+
+export const insertSearchAnalyticsSchema = createInsertSchema(searchAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAudioProcessingJobSchema = createInsertSchema(audioProcessingJobs).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Pagination types
 export interface PaginationResult<T> {
   data: T[];
@@ -484,7 +575,7 @@ export interface PaginationResult<T> {
 // Background job types
 export interface BackgroundJob {
   id: string;
-  type: 'beat_processing' | 'email_notification' | 'analytics_update';
+  type: 'beat_processing' | 'email_notification' | 'analytics_update' | 'waveform_generation' | 'preview_generation' | 'search_indexing';
   data: any;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: Date;
@@ -519,3 +610,52 @@ export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
 export type License = typeof licenses.$inferSelect;
 export type InsertLicense = z.infer<typeof insertLicenseSchema>;
+export type SearchSuggestion = typeof searchSuggestions.$inferSelect;
+export type InsertSearchSuggestion = z.infer<typeof insertSearchSuggestionSchema>;
+export type SearchAnalytics = typeof searchAnalytics.$inferSelect;
+export type InsertSearchAnalytics = z.infer<typeof insertSearchAnalyticsSchema>;
+export type AudioProcessingJob = typeof audioProcessingJobs.$inferSelect;
+export type InsertAudioProcessingJob = z.infer<typeof insertAudioProcessingJobSchema>;
+
+// Advanced search interfaces
+export interface SearchFilters {
+  query?: string;
+  genre?: string;
+  mood?: string;
+  bpmMin?: number;
+  bpmMax?: number;
+  key?: string;
+  priceMin?: number;
+  priceMax?: number;
+  duration?: { min?: number; max?: number };
+  tags?: string[];
+  isFree?: boolean;
+  isExclusive?: boolean;
+  producerId?: string;
+  sortBy?: 'relevance' | 'newest' | 'popular' | 'price_low' | 'price_high' | 'bpm' | 'duration';
+  limit?: number;
+  offset?: number;
+}
+
+export interface SearchResult {
+  beats: Beat[];
+  totalCount: number;
+  facets: {
+    genres: { value: string; count: number }[];
+    moods: { value: string; count: number }[];
+    keys: { value: string; count: number }[];
+    bpmRanges: { range: string; count: number }[];
+    priceRanges: { range: string; count: number }[];
+  };
+  suggestions: string[];
+  searchTime: number;
+}
+
+export interface AudioStreamMetadata {
+  duration: number;
+  sampleRate: number;
+  bitRate: number;
+  format: string;
+  waveformData?: number[];
+  peaks?: number[];
+}

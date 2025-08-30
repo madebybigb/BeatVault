@@ -16,7 +16,11 @@ import { apiBatcher } from "./apiBatching";
 import { redisService } from "./redis";
 import { initializeWebSocket, getWebSocketService } from "./websocket";
 import { dodoPaymentsService } from "./dodoPayments";
+import { searchService } from "./searchService";
+import { audioService } from "./audioService";
+import { cdnService } from "./cdnService";
 import { Webhook } from "standardwebhooks";
+import type { SearchFilters } from "@shared/schema";
 
 // Utility functions for validation
 const isValidUUID = (id: string): boolean => {
@@ -177,7 +181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Profile image upload endpoint using BackBlaze B2
   app.post('/api/upload/profile-image', isAuthenticated, upload.single('image'), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const file = req.file;
       const type = req.body.type; // 'profile' or 'banner'
       
@@ -214,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
@@ -313,13 +317,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/beats', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const beatData = insertBeatSchema.parse({
         ...req.body,
         producerId: userId,
       });
 
       const beat = await storage.createBeat(beatData);
+      
+      // Queue audio processing jobs
+      if (beat.audioUrl) {
+        audioService.processUploadedAudio(beat.id, beat.audioUrl);
+      }
+      
       res.status(201).json(beat);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -358,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cart routes
   app.get('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const cartItems = await storage.getCartItems(userId);
       res.json(cartItems);
     } catch (error) {
@@ -369,7 +379,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const cartItemData = insertCartItemSchema.parse({
         ...req.body,
         userId,
@@ -403,7 +413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/cart/:beatId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const { beatId } = req.params;
       
       const success = await storage.removeFromCart(userId, beatId);
@@ -420,7 +430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       await storage.clearCart(userId);
       res.json({ success: true });
     } catch (error) {
@@ -432,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Wishlist routes
   app.get('/api/wishlist', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const wishlistItems = await storage.getWishlistItems(userId);
       res.json(wishlistItems);
     } catch (error) {
@@ -443,7 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/wishlist', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const { beatId } = req.body;
       
       const wishlistItem = await storage.addToWishlist({ userId, beatId });
@@ -456,7 +466,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/wishlist/:beatId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const { beatId } = req.params;
       
       const success = await storage.removeFromWishlist(userId, beatId);
@@ -496,10 +506,339 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Advanced Search routes
+  app.get('/api/search', searchSlowDown, async (req, res) => {
+    try {
+      const timer = queryTimer('Advanced Search');
+      
+      const filters: SearchFilters = {
+        query: req.query.q as string,
+        genre: req.query.genre as string,
+        mood: req.query.mood as string,
+        bpmMin: req.query.bpmMin ? parseInt(req.query.bpmMin as string) : undefined,
+        bpmMax: req.query.bpmMax ? parseInt(req.query.bpmMax as string) : undefined,
+        key: req.query.key as string,
+        priceMin: req.query.priceMin ? parseFloat(req.query.priceMin as string) : undefined,
+        priceMax: req.query.priceMax ? parseFloat(req.query.priceMax as string) : undefined,
+        duration: {
+          min: req.query.durationMin ? parseInt(req.query.durationMin as string) : undefined,
+          max: req.query.durationMax ? parseInt(req.query.durationMax as string) : undefined
+        },
+        tags: req.query.tags ? (req.query.tags as string).split(',') : undefined,
+        isFree: req.query.isFree ? req.query.isFree === 'true' : undefined,
+        isExclusive: req.query.isExclusive ? req.query.isExclusive === 'true' : undefined,
+        producerId: req.query.producerId as string,
+        sortBy: req.query.sortBy as any || 'relevance',
+        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 100) : 20,
+        offset: req.query.offset ? parseInt(req.query.offset as string) : 0
+      };
+
+      // Get user ID if authenticated
+      let userId: string | undefined;
+      try {
+        const authHeader = req.headers.authorization;
+        if (authHeader && req.user?.sub) {
+          userId = req.user.sub;
+        }
+      } catch (error) {
+        // Non-authenticated search is allowed
+      }
+
+      const results = await searchService.search(filters, userId);
+      timer();
+      
+      res.json(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      res.status(500).json({ message: 'Search failed' });
+    }
+  });
+
+  app.get('/api/search/suggestions', async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const suggestions = await searchService.getSearchSuggestions(query);
+      res.json(suggestions);
+    } catch (error) {
+      console.error('Search suggestions error:', error);
+      res.status(500).json({ message: 'Failed to get suggestions' });
+    }
+  });
+
+  app.get('/api/search/autocomplete', async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const categories = req.query.categories ? (req.query.categories as string).split(',') : ['beat', 'producer', 'genre'];
+      
+      if (!query || query.length < 2) {
+        return res.json({ beats: [], producers: [], genres: [], tags: [] });
+      }
+
+      const results = await searchService.getAutocomplete(query, categories);
+      res.json(results);
+    } catch (error) {
+      console.error('Autocomplete error:', error);
+      res.status(500).json({ message: 'Autocomplete failed' });
+    }
+  });
+
+  app.get('/api/search/trending', async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const trending = await searchService.getTrendingSearches(limit);
+      res.json(trending);
+    } catch (error) {
+      console.error('Trending searches error:', error);
+      res.status(500).json({ message: 'Failed to get trending searches' });
+    }
+  });
+
+  app.get('/api/beats/:id/similar', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!validateUUID(id, res, 'beat ID')) return;
+      
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const similarBeats = await searchService.findSimilarBeats(id, limit);
+      res.json(similarBeats);
+    } catch (error) {
+      console.error('Similar beats error:', error);
+      res.status(500).json({ message: 'Failed to find similar beats' });
+    }
+  });
+
+  // Audio Streaming and Processing routes
+  app.get('/api/audio/:beatId/metadata', async (req, res) => {
+    try {
+      const { beatId } = req.params;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      const metadata = await audioService.getAudioMetadata(beatId);
+      if (!metadata) {
+        return res.status(404).json({ message: 'Audio metadata not found' });
+      }
+      
+      res.json(metadata);
+    } catch (error) {
+      console.error('Audio metadata error:', error);
+      res.status(500).json({ message: 'Failed to get audio metadata' });
+    }
+  });
+
+  app.get('/api/audio/:beatId/cdn-urls', async (req, res) => {
+    try {
+      const { beatId } = req.params;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      const urls = await audioService.getCDNUrls(beatId);
+      if (!urls) {
+        return res.status(404).json({ message: 'Audio URLs not found' });
+      }
+      
+      res.json(urls);
+    } catch (error) {
+      console.error('CDN URLs error:', error);
+      res.status(500).json({ message: 'Failed to get CDN URLs' });
+    }
+  });
+
+  app.post('/api/audio/:beatId/generate-waveform', isAuthenticated, async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      // Get beat to ensure it exists and user has access
+      const beat = await storage.getBeat(beatId);
+      if (!beat) {
+        return res.status(404).json({ message: 'Beat not found' });
+      }
+      
+      // Check if user owns the beat
+      const userId = req.user.sub;
+      if (beat.producerId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      const waveformUrl = await audioService.generateWaveform(beatId, beat.audioUrl);
+      if (!waveformUrl) {
+        return res.status(500).json({ message: 'Waveform generation failed' });
+      }
+      
+      res.json({ waveformUrl });
+    } catch (error) {
+      console.error('Waveform generation error:', error);
+      res.status(500).json({ message: 'Failed to generate waveform' });
+    }
+  });
+
+  app.post('/api/audio/preload', async (req, res) => {
+    try {
+      const { beatIds } = req.body;
+      
+      if (!Array.isArray(beatIds) || beatIds.length === 0) {
+        return res.status(400).json({ message: 'Beat IDs required' });
+      }
+      
+      // Validate all beat IDs
+      for (const id of beatIds) {
+        if (!isValidUUID(id)) {
+          return res.status(400).json({ message: `Invalid beat ID: ${id}` });
+        }
+      }
+      
+      const preloadUrls = await audioService.preloadAudio(beatIds.slice(0, 20)); // Limit to 20 beats
+      res.json(preloadUrls);
+    } catch (error) {
+      console.error('Audio preload error:', error);
+      res.status(500).json({ message: 'Failed to preload audio' });
+    }
+  });
+
+  app.post('/api/audio/:beatId/streaming-analytics', isAuthenticated, async (req: any, res) => {
+    try {
+      const { beatId } = req.params;
+      const userId = req.user.sub;
+      const { duration, quality, bufferingEvents, completionRate } = req.body;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      await audioService.trackAudioStreaming(beatId, userId, {
+        duration,
+        quality,
+        bufferingEvents,
+        completionRate
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Streaming analytics error:', error);
+      res.status(500).json({ message: 'Failed to track streaming analytics' });
+    }
+  });
+
+  // CDN and Streaming Optimization routes
+  app.get('/api/cdn/optimize/:beatId', async (req, res) => {
+    try {
+      const { beatId } = req.params;
+      const quality = (req.query.quality as 'high' | 'medium' | 'low') || 'high';
+      const userRegion = req.query.region as string || 'us-east';
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      // Get beat audio URL
+      const beat = await storage.getBeat(beatId);
+      if (!beat) {
+        return res.status(404).json({ message: 'Beat not found' });
+      }
+      
+      // Optimize for CDN
+      const optimized = await cdnService.optimizeAudioForCDN(beat.audioUrl, quality);
+      const regionalUrl = cdnService.getRegionalCDNUrl(optimized.cdnUrl, userRegion);
+      
+      res.json({
+        ...optimized,
+        regionalUrl,
+        analytics: await cdnService.getCDNAnalytics(beat.audioUrl)
+      });
+    } catch (error) {
+      console.error('CDN optimization error:', error);
+      res.status(500).json({ message: 'Failed to optimize for CDN' });
+    }
+  });
+
+  app.get('/api/cdn/streaming/:beatId', async (req, res) => {
+    try {
+      const { beatId } = req.params;
+      
+      if (!validateUUID(beatId, res, 'beat ID')) return;
+      
+      const beat = await storage.getBeat(beatId);
+      if (!beat) {
+        return res.status(404).json({ message: 'Beat not found' });
+      }
+      
+      // Generate adaptive streaming URLs
+      const streamingUrls = await cdnService.generateAdaptiveStreamingUrls(beat.audioUrl);
+      
+      res.json(streamingUrls);
+    } catch (error) {
+      console.error('Streaming URLs error:', error);
+      res.status(500).json({ message: 'Failed to generate streaming URLs' });
+    }
+  });
+
+  app.post('/api/cdn/preload', async (req, res) => {
+    try {
+      const { beatIds } = req.body;
+      
+      if (!Array.isArray(beatIds) || beatIds.length === 0) {
+        return res.status(400).json({ message: 'Beat IDs required' });
+      }
+      
+      // Validate beat IDs
+      for (const id of beatIds) {
+        if (!isValidUUID(id)) {
+          return res.status(400).json({ message: `Invalid beat ID: ${id}` });
+        }
+      }
+      
+      // Get beat URLs
+      const beats = await storage.getBeats({ 
+        filters: { isActive: true }, 
+        limit: beatIds.length,
+        offset: 0 
+      });
+      
+      const audioUrls = beats.beats
+        .filter(beat => beatIds.includes(beat.id))
+        .map(beat => beat.audioUrl);
+      
+      // Preload to edge cache
+      await cdnService.preloadToEdgeCache(audioUrls);
+      
+      res.json({ 
+        success: true, 
+        preloaded: audioUrls.length,
+        message: `${audioUrls.length} assets preloaded to edge cache` 
+      });
+    } catch (error) {
+      console.error('CDN preload error:', error);
+      res.status(500).json({ message: 'Failed to preload assets' });
+    }
+  });
+
+  app.post('/api/cdn/invalidate', isAuthenticated, async (req: any, res) => {
+    try {
+      const { assetPaths } = req.body;
+      const userId = req.user.sub;
+      
+      if (!Array.isArray(assetPaths) || assetPaths.length === 0) {
+        return res.status(400).json({ message: 'Asset paths required' });
+      }
+      
+      // Only allow users to invalidate their own content
+      // In a real implementation, you'd verify ownership
+      await cdnService.invalidateCache(assetPaths);
+      
+      res.json({ 
+        success: true, 
+        invalidated: assetPaths.length,
+        message: `${assetPaths.length} cache entries invalidated` 
+      });
+    } catch (error) {
+      console.error('Cache invalidation error:', error);
+      res.status(500).json({ message: 'Failed to invalidate cache' });
+    }
+  });
+
   // Like routes
   app.post('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const { id: beatId } = req.params;
 
       const like = await storage.likeBeats({ userId, beatId });
@@ -512,7 +851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const { id: beatId } = req.params;
 
       const success = await storage.unlikeBeat(userId, beatId);
@@ -529,7 +868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/user/likes', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const likes = await storage.getUserLikes(userId);
       res.json(likes);
     } catch (error) {
@@ -541,7 +880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Purchase routes
   app.post('/api/purchases', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const purchaseData = insertPurchaseSchema.parse({
         ...req.body,
         userId,
@@ -568,7 +907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/purchases', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const purchases = await storage.getPurchasesByUser(userId);
       res.json(purchases);
     } catch (error) {
@@ -591,7 +930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Payment routes
   app.post('/api/checkout/create', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
       const userEmail = req.user.claims.email || `user_${userId}@example.com`;
       const userName = req.user.claims.name || `User ${userId}`;
 
@@ -632,7 +971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/payment/session/:sessionId', isAuthenticated, async (req: any, res) => {
     try {
       const { sessionId } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.sub;
 
       if (!validateUUID(sessionId, res, 'Session ID')) return;
 

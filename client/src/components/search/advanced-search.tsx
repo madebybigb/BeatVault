@@ -1,424 +1,486 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Filter, X, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Search, ChevronDown, X, Filter, Mic2, Clock, DollarSign } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';
-
-export interface SearchFilters {
-  query: string;
-  genre: string[];
-  mood: string[];
-  key: string[];
-  bpmRange: [number, number];
-  priceRange: [number, number];
-  isFree: boolean | null;
-  isExclusive: boolean | null;
-  tags: string[];
-  producer: string;
-  sortBy: 'newest' | 'oldest' | 'popular' | 'price_low' | 'price_high' | 'bpm_low' | 'bpm_high';
-}
+import type { SearchFilters, SearchResult } from '@shared/schema';
 
 interface AdvancedSearchProps {
-  filters: SearchFilters;
-  onFiltersChange: (filters: SearchFilters) => void;
-  onSearch: () => void;
-  className?: string;
+  onSearch: (filters: SearchFilters) => void;
+  onResultsChange: (results: SearchResult | null) => void;
+  isLoading?: boolean;
 }
 
 const GENRES = [
-  'Hip Hop', 'Trap', 'R&B', 'Pop', 'Electronic', 'Rock', 'Jazz', 'Classical',
-  'Reggae', 'Country', 'Folk', 'Punk', 'Metal', 'Ambient', 'House', 'Techno'
+  'Hip Hop', 'Trap', 'R&B', 'Pop', 'Rock', 'Electronic', 'Jazz', 'Reggae',
+  'Country', 'Blues', 'Classical', 'Alternative', 'Indie', 'Folk', 'Punk'
 ];
 
 const MOODS = [
-  'Energetic', 'Chill', 'Dark', 'Happy', 'Sad', 'Aggressive', 'Romantic',
-  'Mysterious', 'Uplifting', 'Melancholic', 'Dramatic', 'Peaceful'
+  'Aggressive', 'Chill', 'Dark', 'Energetic', 'Happy', 'Melancholic',
+  'Mysterious', 'Peaceful', 'Romantic', 'Sad', 'Uplifting', 'Dreamy'
 ];
 
 const KEYS = [
-  'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
+  'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#',
+  'Am', 'A#m', 'Bm', 'Cm', 'C#m', 'Dm', 'D#m', 'Em', 'Fm', 'F#m', 'Gm', 'G#m'
 ];
 
 const SORT_OPTIONS = [
-  { value: 'newest', label: 'Newest First' },
-  { value: 'oldest', label: 'Oldest First' },
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'newest', label: 'Newest' },
   { value: 'popular', label: 'Most Popular' },
   { value: 'price_low', label: 'Price: Low to High' },
   { value: 'price_high', label: 'Price: High to Low' },
-  { value: 'bpm_low', label: 'BPM: Low to High' },
-  { value: 'bpm_high', label: 'BPM: High to Low' },
+  { value: 'bpm', label: 'BPM' },
+  { value: 'duration', label: 'Duration' }
 ];
 
-export function AdvancedSearch({ filters, onFiltersChange, onSearch, className }: AdvancedSearchProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+// Debounce utility function
+function debounce<T extends (...args: any[]) => void>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
-  // Fetch search suggestions
-  const { data: suggestions } = useQuery({
-    queryKey: ['/api/search/suggestions', filters.query],
-    enabled: filters.query.length > 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+export function AdvancedSearch({ onSearch, onResultsChange, isLoading }: AdvancedSearchProps) {
+  const [query, setQuery] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [filters, setFilters] = useState<SearchFilters>({
+    sortBy: 'relevance',
+    limit: 20,
+    offset: 0
+  });
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [bpmRange, setBpmRange] = useState<[number, number]>([60, 200]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
+  const [durationRange, setDurationRange] = useState<[number, number]>([30, 300]);
+
+  // Search suggestions
+  const { data: suggestions = [] } = useQuery<string[]>({
+    queryKey: ['/api/search/suggestions', query],
+    queryFn: () => apiRequest('GET', `/api/search/suggestions?q=${encodeURIComponent(query)}`),
+    enabled: query.length >= 2
   });
 
-  useEffect(() => {
-    if (suggestions && filters.query.length > 1) {
-      setSearchSuggestions(suggestions);
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
-  }, [suggestions, filters.query]);
+  // Autocomplete data
+  const { data: autocomplete } = useQuery<{
+    beats: string[];
+    producers: string[];
+    genres: string[];
+    tags: string[];
+  }>({
+    queryKey: ['/api/search/autocomplete', query],
+    queryFn: () => apiRequest('GET', `/api/search/autocomplete?q=${encodeURIComponent(query)}`),
+    enabled: query.length >= 2
+  });
 
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        suggestionsRef.current &&
-        !suggestionsRef.current.contains(event.target as Node) &&
-        !searchInputRef.current?.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
-      }
+  // Trending searches
+  const { data: trending = [] } = useQuery<string[]>({
+    queryKey: ['/api/search/trending'],
+    queryFn: () => apiRequest('GET', '/api/search/trending')
+  });
+
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((searchFilters: SearchFilters) => {
+      onSearch(searchFilters);
+    }, 300),
+    [onSearch]
+  );
+
+  // Update filters and trigger search
+  const updateFilters = (newFilters: Partial<SearchFilters>) => {
+    const updatedFilters = { 
+      ...filters, 
+      ...newFilters, 
+      query: query || undefined,
+      offset: 0 // Reset pagination when filters change
     };
+    setFilters(updatedFilters);
+    debouncedSearch(updatedFilters);
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // Handle query change
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    const updatedFilters = { ...filters, query: value || undefined, offset: 0 };
+    setFilters(updatedFilters);
+    debouncedSearch(updatedFilters);
+  };
 
-  const updateFilters = useCallback((updates: Partial<SearchFilters>) => {
-    onFiltersChange({ ...filters, ...updates });
-  }, [filters, onFiltersChange]);
+  // Handle tag selection
+  const handleTagSelect = (tag: string) => {
+    const newTags = selectedTags.includes(tag)
+      ? selectedTags.filter(t => t !== tag)
+      : [...selectedTags, tag];
+    setSelectedTags(newTags);
+    updateFilters({ tags: newTags.length > 0 ? newTags : undefined });
+  };
 
-  const addArrayFilter = useCallback((key: keyof SearchFilters, value: string) => {
-    const currentArray = filters[key] as string[];
-    if (!currentArray.includes(value)) {
-      updateFilters({ [key]: [...currentArray, value] });
+  // Clear all filters
+  const clearFilters = () => {
+    setQuery('');
+    setSelectedTags([]);
+    setBpmRange([60, 200]);
+    setPriceRange([0, 100]);
+    setDurationRange([30, 300]);
+    const clearedFilters: SearchFilters = {
+      sortBy: 'relevance',
+      limit: 20,
+      offset: 0
+    };
+    setFilters(clearedFilters);
+    onSearch(clearedFilters);
+  };
+
+  // Apply advanced filters
+  useEffect(() => {
+    if (showAdvanced) {
+      updateFilters({
+        bpmMin: bpmRange[0],
+        bpmMax: bpmRange[1],
+        priceMin: priceRange[0],
+        priceMax: priceRange[1],
+        duration: {
+          min: durationRange[0],
+          max: durationRange[1]
+        }
+      });
     }
-  }, [filters, updateFilters]);
-
-  const removeArrayFilter = useCallback((key: keyof SearchFilters, value: string) => {
-    const currentArray = filters[key] as string[];
-    updateFilters({ [key]: currentArray.filter(item => item !== value) });
-  }, [filters, updateFilters]);
-
-  const clearAllFilters = useCallback(() => {
-    onFiltersChange({
-      query: '',
-      genre: [],
-      mood: [],
-      key: [],
-      bpmRange: [60, 200],
-      priceRange: [0, 200],
-      isFree: null,
-      isExclusive: null,
-      tags: [],
-      producer: '',
-      sortBy: 'newest',
-    });
-  }, [onFiltersChange]);
-
-  const getActiveFilterCount = useCallback(() => {
-    let count = 0;
-    if (filters.query) count++;
-    if (filters.genre.length > 0) count++;
-    if (filters.mood.length > 0) count++;
-    if (filters.key.length > 0) count++;
-    if (filters.bpmRange[0] !== 60 || filters.bpmRange[1] !== 200) count++;
-    if (filters.priceRange[0] !== 0 || filters.priceRange[1] !== 200) count++;
-    if (filters.isFree !== null) count++;
-    if (filters.isExclusive !== null) count++;
-    if (filters.tags.length > 0) count++;
-    if (filters.producer) count++;
-    return count;
-  }, [filters]);
-
-  const handleSuggestionClick = useCallback((suggestion: string) => {
-    updateFilters({ query: suggestion });
-    setShowSuggestions(false);
-    onSearch();
-  }, [updateFilters, onSearch]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      setShowSuggestions(false);
-      onSearch();
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-    }
-  }, [onSearch]);
+  }, [bpmRange, priceRange, durationRange, showAdvanced]);
 
   return (
-    <div className={cn('w-full space-y-4', className)}>
-      {/* Search Input with Suggestions */}
+    <div className="space-y-4">
+      {/* Main Search Bar */}
       <div className="relative">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search beats, artists, tags..."
-            value={filters.query}
-            onChange={(e) => updateFilters({ query: e.target.value })}
-            onKeyDown={handleKeyDown}
-            onFocus={() => filters.query.length > 1 && setShowSuggestions(true)}
-            className="pl-10 pr-12"
             data-testid="search-input"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="Search beats, producers, genres..."
+            className="pl-10 pr-12 h-12 text-lg"
           />
-          <Button
-            size="sm"
-            onClick={onSearch}
-            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8"
-            data-testid="search-button"
-          >
-            Search
-          </Button>
+          {query && (
+            <Button
+              data-testid="clear-search"
+              variant="ghost"
+              size="sm"
+              onClick={() => handleQueryChange('')}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
-        {/* Search Suggestions */}
-        {showSuggestions && searchSuggestions.length > 0 && (
-          <div
-            ref={suggestionsRef}
-            className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto"
-            data-testid="search-suggestions"
-          >
-            {searchSuggestions.map((suggestion, index) => (
-              <button
-                key={index}
-                onClick={() => handleSuggestionClick(suggestion)}
-                className="w-full px-4 py-2 text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-                data-testid={`suggestion-${index}`}
-              >
-                <Search className="inline h-3 w-3 mr-2 text-muted-foreground" />
-                {suggestion}
-              </button>
-            ))}
-          </div>
+        {/* Search Suggestions Dropdown */}
+        {query.length >= 2 && (autocomplete || suggestions.length > 0) && (
+          <Card className="absolute z-50 w-full mt-1 border shadow-lg">
+            <CardContent className="p-4">
+              {autocomplete && (
+                <div className="space-y-3">
+                  {autocomplete.beats && autocomplete.beats.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Mic2 className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">Beats</Label>
+                      </div>
+                      <div className="space-y-1">
+                        {autocomplete.beats.slice(0, 3).map((beat, index) => (
+                          <Button
+                            key={index}
+                            data-testid={`suggestion-beat-${index}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleQueryChange(beat)}
+                            className="w-full justify-start h-8 text-sm"
+                          >
+                            {beat}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {autocomplete.producers && autocomplete.producers.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">Producers</Label>
+                      <div className="space-y-1 mt-1">
+                        {autocomplete.producers.slice(0, 3).map((producer, index) => (
+                          <Button
+                            key={index}
+                            data-testid={`suggestion-producer-${index}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleQueryChange(producer)}
+                            className="w-full justify-start h-8 text-sm"
+                          >
+                            {producer}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {autocomplete.genres && autocomplete.genres.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">Genres</Label>
+                      <div className="space-y-1 mt-1">
+                        {autocomplete.genres.slice(0, 3).map((genre, index) => (
+                          <Button
+                            key={index}
+                            data-testid={`suggestion-genre-${index}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleQueryChange(genre)}
+                            className="w-full justify-start h-8 text-sm"
+                          >
+                            {genre}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
 
-      {/* Advanced Filters Toggle */}
-      <div className="flex items-center justify-between">
-        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="flex items-center gap-2" data-testid="advanced-filters-toggle">
-              <Filter className="h-4 w-4" />
-              Advanced Filters
-              {getActiveFilterCount() > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {getActiveFilterCount()}
-                </Badge>
-              )}
-              <ChevronDown className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')} />
-            </Button>
-          </CollapsibleTrigger>
+      {/* Trending Searches */}
+      {!query && trending.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <Label className="text-sm text-muted-foreground">Trending:</Label>
+          {trending.slice(0, 8).map((trend, index) => (
+            <Badge
+              key={index}
+              data-testid={`trending-${index}`}
+              variant="secondary"
+              className="cursor-pointer hover:bg-secondary/80"
+              onClick={() => handleQueryChange(trend)}
+            >
+              {trend}
+            </Badge>
+          ))}
+        </div>
+      )}
 
-          <CollapsibleContent className="space-y-6 pt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {/* Genre Filter */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Genre</Label>
-                <div className="flex flex-wrap gap-2">
-                  {GENRES.map((genre) => (
-                    <Badge
-                      key={genre}
-                      variant={filters.genre.includes(genre) ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        filters.genre.includes(genre)
-                          ? removeArrayFilter('genre', genre)
-                          : addArrayFilter('genre', genre)
-                      }
-                      data-testid={`genre-filter-${genre.toLowerCase().replace(/\s+/g, '-')}`}
-                    >
-                      {genre}
-                      {filters.genre.includes(genre) && (
-                        <X className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
+      {/* Quick Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Button
+          data-testid="toggle-advanced-filters"
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="gap-2"
+        >
+          <Filter className="h-4 w-4" />
+          Advanced Filters
+          <ChevronDown className={`h-4 w-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+        </Button>
+
+        <Select value={filters.sortBy} onValueChange={(value) => updateFilters({ sortBy: value as any })}>
+          <SelectTrigger data-testid="sort-select" className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(query || Object.keys(filters).some(key => key !== 'sortBy' && key !== 'limit' && key !== 'offset' && filters[key as keyof SearchFilters])) && (
+          <Button
+            data-testid="clear-filters"
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+            className="gap-2"
+          >
+            <X className="h-4 w-4" />
+            Clear All
+          </Button>
+        )}
+      </div>
+
+      {/* Advanced Filters Panel */}
+      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <CollapsibleContent>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Advanced Filters</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Genre and Mood */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Genre</Label>
+                  <Select value={filters.genre || ''} onValueChange={(value) => updateFilters({ genre: value || undefined })}>
+                    <SelectTrigger data-testid="genre-select">
+                      <SelectValue placeholder="Any genre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Any genre</SelectItem>
+                      {GENRES.map((genre) => (
+                        <SelectItem key={genre} value={genre}>{genre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Mood</Label>
+                  <Select value={filters.mood || ''} onValueChange={(value) => updateFilters({ mood: value || undefined })}>
+                    <SelectTrigger data-testid="mood-select">
+                      <SelectValue placeholder="Any mood" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Any mood</SelectItem>
+                      {MOODS.map((mood) => (
+                        <SelectItem key={mood} value={mood}>{mood}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              {/* Mood Filter */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Mood</Label>
-                <div className="flex flex-wrap gap-2">
-                  {MOODS.map((mood) => (
-                    <Badge
-                      key={mood}
-                      variant={filters.mood.includes(mood) ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        filters.mood.includes(mood)
-                          ? removeArrayFilter('mood', mood)
-                          : addArrayFilter('mood', mood)
-                      }
-                      data-testid={`mood-filter-${mood.toLowerCase()}`}
+              {/* Key and Type */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Key</Label>
+                  <Select value={filters.key || ''} onValueChange={(value) => updateFilters({ key: value || undefined })}>
+                    <SelectTrigger data-testid="key-select">
+                      <SelectValue placeholder="Any key" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Any key</SelectItem>
+                      {KEYS.map((key) => (
+                        <SelectItem key={key} value={key}>{key}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Type</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      data-testid="filter-free"
+                      variant={filters.isFree === true ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => updateFilters({ isFree: filters.isFree === true ? undefined : true })}
                     >
-                      {mood}
-                      {filters.mood.includes(mood) && (
-                        <X className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
+                      Free
+                    </Button>
+                    <Button
+                      data-testid="filter-exclusive"
+                      variant={filters.isExclusive === true ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => updateFilters({ isExclusive: filters.isExclusive === true ? undefined : true })}
+                    >
+                      Exclusive
+                    </Button>
+                  </div>
                 </div>
               </div>
 
-              {/* Key Filter */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Key</Label>
-                <div className="flex flex-wrap gap-2">
-                  {KEYS.map((key) => (
-                    <Badge
-                      key={key}
-                      variant={filters.key.includes(key) ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        filters.key.includes(key)
-                          ? removeArrayFilter('key', key)
-                          : addArrayFilter('key', key)
-                      }
-                      data-testid={`key-filter-${key.toLowerCase()}`}
-                    >
-                      {key}
-                      {filters.key.includes(key) && (
-                        <X className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              <Separator />
 
               {/* BPM Range */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">
-                  BPM Range: {filters.bpmRange[0]} - {filters.bpmRange[1]}
-                </Label>
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Mic2 className="h-4 w-4" />
+                  <Label className="text-sm font-medium">BPM Range: {bpmRange[0]} - {bpmRange[1]}</Label>
+                </div>
                 <Slider
-                  value={filters.bpmRange}
-                  onValueChange={(value) => updateFilters({ bpmRange: value as [number, number] })}
+                  data-testid="bpm-slider"
+                  value={bpmRange}
+                  onValueChange={(value) => setBpmRange(value as [number, number])}
                   min={60}
                   max={200}
                   step={5}
                   className="w-full"
-                  data-testid="bpm-range-slider"
                 />
               </div>
 
               {/* Price Range */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">
-                  Price Range: ${filters.priceRange[0]} - ${filters.priceRange[1]}
-                </Label>
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}</Label>
+                </div>
                 <Slider
-                  value={filters.priceRange}
-                  onValueChange={(value) => updateFilters({ priceRange: value as [number, number] })}
+                  data-testid="price-slider"
+                  value={priceRange}
+                  onValueChange={(value) => setPriceRange(value as [number, number])}
                   min={0}
-                  max={200}
+                  max={500}
                   step={5}
                   className="w-full"
-                  data-testid="price-range-slider"
                 />
               </div>
 
-              {/* Additional Filters */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Additional Options</Label>
-                <div className="space-y-2">
-                  <Select
-                    value={filters.isFree === null ? 'all' : filters.isFree ? 'free' : 'paid'}
-                    onValueChange={(value) =>
-                      updateFilters({
-                        isFree: value === 'all' ? null : value === 'free',
-                      })
-                    }
-                  >
-                    <SelectTrigger data-testid="price-type-filter">
-                      <SelectValue placeholder="Price Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Beats</SelectItem>
-                      <SelectItem value="free">Free Only</SelectItem>
-                      <SelectItem value="paid">Paid Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={filters.isExclusive === null ? 'all' : filters.isExclusive ? 'exclusive' : 'non-exclusive'}
-                    onValueChange={(value) =>
-                      updateFilters({
-                        isExclusive: value === 'all' ? null : value === 'exclusive',
-                      })
-                    }
-                  >
-                    <SelectTrigger data-testid="exclusivity-filter">
-                      <SelectValue placeholder="Exclusivity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="exclusive">Exclusive Only</SelectItem>
-                      <SelectItem value="non-exclusive">Non-Exclusive Only</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Duration Range */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="h-4 w-4" />
+                  <Label className="text-sm font-medium">Duration: {Math.floor(durationRange[0] / 60)}:{(durationRange[0] % 60).toString().padStart(2, '0')} - {Math.floor(durationRange[1] / 60)}:{(durationRange[1] % 60).toString().padStart(2, '0')}</Label>
                 </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Sort and Producer Search */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <Label className="text-sm font-medium">Producer</Label>
-                <Input
-                  type="text"
-                  placeholder="Search by producer name..."
-                  value={filters.producer}
-                  onChange={(e) => updateFilters({ producer: e.target.value })}
-                  className="mt-2"
-                  data-testid="producer-search"
+                <Slider
+                  data-testid="duration-slider"
+                  value={durationRange}
+                  onValueChange={(value) => setDurationRange(value as [number, number])}
+                  min={30}
+                  max={600}
+                  step={15}
+                  className="w-full"
                 />
               </div>
 
-              <div className="flex-1">
-                <Label className="text-sm font-medium">Sort By</Label>
-                <Select value={filters.sortBy} onValueChange={(value) => updateFilters({ sortBy: value as any })}>
-                  <SelectTrigger className="mt-2" data-testid="sort-by-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
+              {/* Tags */}
+              {autocomplete?.tags && autocomplete.tags.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Tags</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {autocomplete.tags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        data-testid={`tag-${index}`}
+                        variant={selectedTags.includes(tag) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => handleTagSelect(tag)}
+                      >
+                        {tag}
+                      </Badge>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Clear Filters */}
-            {getActiveFilterCount() > 0 && (
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={clearAllFilters} data-testid="clear-filters">
-                  <X className="h-4 w-4 mr-2" />
-                  Clear All Filters
-                </Button>
-              </div>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
