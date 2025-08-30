@@ -1,0 +1,64 @@
+[vite] connecting... client:495:9
+[vite] connected. client:618:15
+Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools chunk-RPCDYKBN.js:21551:25
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat3.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat1.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat8.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat4.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat6.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat5.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat2.jpg
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. beat7.jpg
+Uncaught TypeError: can't access property "type", collection is undefined
+    CollectionCard collections.tsx:174
+    React 13
+3 collections.tsx:181:19
+Uncaught TypeError: can't access property "type", collection is undefined
+    CollectionCard collections.tsx:174
+    React 14
+3 collections.tsx:181:19
+The above error occurred in the <CollectionCard> component:
+
+CollectionCard@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/pages/collections.tsx:180:24
+div
+section
+div
+div
+Collections@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/pages/collections.tsx:349:70
+Route@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=7368161a:323:13
+Switch@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=7368161a:379:14
+Router@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/App.tsx?v=FtqK96jUudv16HiumIFZW:38:42
+AppWithPlayer@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/App.tsx?v=FtqK96jUudv16HiumIFZW:118:75
+div
+Provider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=7368161a:38:47
+TooltipProvider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=7368161a:67:7
+QueryClientProvider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=7368161a:2804:27
+App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. chunk-RPCDYKBN.js:14032:23
+The above error occurred in the <CollectionCard> component:
+
+CollectionCard@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/pages/collections.tsx:180:24
+div
+div
+section
+div
+div
+Collections@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/pages/collections.tsx:349:70
+Route@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=7368161a:323:13
+Switch@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=7368161a:379:14
+Router@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/App.tsx?v=FtqK96jUudv16HiumIFZW:38:42
+AppWithPlayer@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/src/App.tsx?v=FtqK96jUudv16HiumIFZW:118:75
+div
+Provider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=7368161a:38:47
+TooltipProvider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=7368161a:67:7
+QueryClientProvider@https://b7d147de-a2ec-4002-8202-7abc82a3edc3-00-2eiusw73bmn2r.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=7368161a:2804:27
+App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. 2 chunk-RPCDYKBN.js:14032:23
+Uncaught TypeError: can't access property "type", collection is undefined
+    CollectionCard collections.tsx:174
+    React 11
+collections.tsx:181:19

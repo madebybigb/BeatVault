@@ -171,6 +171,8 @@ interface CollectionCardProps {
 }
 
 function CollectionCard({ collection, size = 'medium' }: CollectionCardProps) {
+  if (!collection) return null;
+  
   const isGenre = collection.type === 'genre';
   const sizeClasses = {
     large: 'h-48 text-xl',
@@ -304,20 +306,22 @@ export default function Collections() {
         </div>
 
         {/* Featured Collection */}
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-1 bg-primary rounded-full" />
-            <h2 className="text-3xl font-bold">Featured Collection</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <CollectionCard collection={genres[0]} size="large" />
-            <div className="grid grid-cols-1 gap-4">
-              <CollectionCard collection={artistTypes[0]} size="medium" />
-              <CollectionCard collection={artistTypes[1]} size="medium" />
+        {genres.length > 0 && artistTypes.length > 1 && (
+          <section className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-1 bg-primary rounded-full" />
+              <h2 className="text-3xl font-bold">Featured Collection</h2>
             </div>
-          </div>
-        </section>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <CollectionCard collection={genres[0]} size="large" />
+              <div className="grid grid-cols-1 gap-4">
+                <CollectionCard collection={artistTypes[0]} size="medium" />
+                <CollectionCard collection={artistTypes[1]} size="medium" />
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Genres Section */}
         <section className="space-y-6">
