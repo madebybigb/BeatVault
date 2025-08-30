@@ -379,12 +379,12 @@ export default function Cart() {
                                   <SelectTrigger className="w-48" data-testid={`select-license-${item.beatId}`}>
                                     <SelectValue />
                                   </SelectTrigger>
-                                  <SelectContent>
+                                  <SelectContent className="w-64">
                                     {Object.entries(LICENSE_TYPES).map(([key, license]) => (
-                                      <SelectItem key={key} value={key}>
-                                        <div className="flex flex-col">
-                                          <span>{license.name}</span>
-                                          <span className="text-xs text-muted-foreground">
+                                      <SelectItem key={key} value={key} className="h-auto py-2">
+                                        <div className="flex flex-col w-full max-w-[220px]">
+                                          <span className="font-medium">{license.name}</span>
+                                          <span className="text-xs text-muted-foreground leading-relaxed break-words whitespace-normal">
                                             {license.description}
                                           </span>
                                         </div>
