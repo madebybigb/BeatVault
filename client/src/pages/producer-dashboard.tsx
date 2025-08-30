@@ -518,11 +518,13 @@ export default function ProducerDashboard() {
                     <CardContent className="p-6">
                       <div className="flex items-center gap-6">
                         {/* Track Info */}
-                        <div className="h-16 w-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <div className="h-16 w-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center flex-shrink-0 relative overflow-hidden">
                           {beat.artworkUrl ? (
                             <img src={beat.artworkUrl} alt={beat.title} className="h-full w-full object-cover rounded-xl" />
                           ) : (
-                            <Music className="h-8 w-8 text-primary" />
+                            <div className="h-full w-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center rounded-xl">
+                              <Music className="h-8 w-8 text-primary" />
+                            </div>
                           )}
                         </div>
                         
