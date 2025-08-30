@@ -140,6 +140,23 @@ export const wishlist = pgTable("wishlist", {
   index("idx_wishlist_user_beat").on(table.userId, table.beatId), // Unique constraint index
 ]);
 
+// Collections table for genres and artist types
+export const collections = pgTable("collections", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  type: varchar("type").notNull(), // 'genre' or 'artist'
+  description: text("description"),
+  color: varchar("color").notNull(), // Hex color code
+  imageUrl: varchar("image_url"),
+  beatCount: integer("beat_count").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_collections_type").on(table.type),
+  index("idx_collections_name").on(table.name),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   beats: many(beats),
@@ -206,6 +223,10 @@ export const wishlistRelations = relations(wishlist, ({ one }) => ({
   }),
 }));
 
+export const collectionsRelations = relations(collections, ({ many }) => ({
+  beats: many(beats),
+}));
+
 // Schemas for validation
 export const insertBeatSchema = createInsertSchema(beats).omit({
   id: true,
@@ -233,6 +254,12 @@ export const insertLikeSchema = createInsertSchema(likes).omit({
 export const insertWishlistSchema = createInsertSchema(wishlist).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertCollectionSchema = createInsertSchema(collections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 // Pagination types
@@ -271,3 +298,5 @@ export type Like = typeof likes.$inferSelect;
 export type InsertLike = z.infer<typeof insertLikeSchema>;
 export type Wishlist = typeof wishlist.$inferSelect;
 export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
+export type Collection = typeof collections.$inferSelect;
+export type InsertCollection = z.infer<typeof insertCollectionSchema>;

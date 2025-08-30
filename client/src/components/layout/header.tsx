@@ -63,6 +63,16 @@ export function Header() {
                 Browse
               </Link>
               <Link 
+                href="/collections" 
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-primary",
+                  location === "/collections" ? "text-primary" : "text-muted-foreground"
+                )}
+                data-testid="link-collections"
+              >
+                Collections
+              </Link>
+              <Link 
                 href="/upload-beat" 
                 className={cn(
                   "text-sm font-medium transition-colors hover:text-primary",

@@ -447,6 +447,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Collections routes
+  app.get('/api/collections', async (req, res) => {
+    try {
+      const collections = await storage.getCollections();
+      res.json(collections);
+    } catch (error) {
+      console.error("Error fetching collections:", error);
+      res.status(500).json({ message: "Failed to fetch collections" });
+    }
+  });
+
+  app.get('/api/collections/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const collection = await storage.getCollection(id);
+      if (!collection) {
+        return res.status(404).json({ message: "Collection not found" });
+      }
+      res.json(collection);
+    } catch (error) {
+      console.error("Error fetching collection:", error);
+      res.status(500).json({ message: "Failed to fetch collection" });
+    }
+  });
+
   // Like routes
   app.post('/api/beats/:id/like', isAuthenticated, async (req: any, res) => {
     try {

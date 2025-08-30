@@ -5,6 +5,7 @@ import {
   purchases,
   likes,
   wishlist,
+  collections,
   type User,
   type UpsertUser,
   type Beat,
@@ -17,6 +18,8 @@ import {
   type InsertLike,
   type Wishlist,
   type InsertWishlist,
+  type Collection,
+  type InsertCollection,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ilike, or, sql, inArray } from "drizzle-orm";
@@ -68,6 +71,11 @@ export interface IStorage {
   getWishlistItems(userId: string): Promise<any[]>;
   addToWishlist(wishlistItem: InsertWishlist): Promise<Wishlist>;
   removeFromWishlist(userId: string, beatId: string): Promise<boolean>;
+
+  // Collection operations
+  getCollections(): Promise<Collection[]>;
+  getCollection(id: string): Promise<Collection | undefined>;
+  createCollection(collection: InsertCollection): Promise<Collection>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -381,6 +389,28 @@ export class DatabaseStorage implements IStorage {
       .delete(wishlist)
       .where(and(eq(wishlist.userId, userId), eq(wishlist.beatId, beatId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Collection operations
+  async getCollections(): Promise<Collection[]> {
+    return await db
+      .select()
+      .from(collections)
+      .where(eq(collections.isActive, true))
+      .orderBy(desc(collections.beatCount), collections.name);
+  }
+
+  async getCollection(id: string): Promise<Collection | undefined> {
+    const [collection] = await db
+      .select()
+      .from(collections)
+      .where(eq(collections.id, id));
+    return collection;
+  }
+
+  async createCollection(collection: InsertCollection): Promise<Collection> {
+    const [newCollection] = await db.insert(collections).values(collection).returning();
+    return newCollection;
   }
 }
 
